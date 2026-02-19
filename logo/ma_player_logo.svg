@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <!-- Left curtain gradient: top-left orange → bottom-right red -->
+    <linearGradient id="curtain-left" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%"   stop-color="#f47b25"/>
+      <stop offset="100%" stop-color="#e53935"/>
+    </linearGradient>
+    <!-- Right curtain gradient: top-right orange → bottom-left red -->
+    <linearGradient id="curtain-right" x1="1" y1="0" x2="0" y2="1">
+      <stop offset="0%"   stop-color="#f47b25"/>
+      <stop offset="100%" stop-color="#e53935"/>
+    </linearGradient>
+    <!-- Drop shadow for the play arrow -->
+    <filter id="arrow-shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="4" stdDeviation="10" flood-color="rgba(0,0,0,0.4)"/>
+    </filter>
+    <!-- Subtle glow around curtains -->
+    <filter id="curtain-glow" x="-10%" y="-10%" width="120%" height="120%">
+      <feGaussianBlur stdDeviation="6" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+  </defs>
+
+  <!-- Left curtain leg: skewed trapezoid, wider at top, converges towards bottom-center -->
+  <path
+    d="M 40,32
+       C 50,24 68,24 88,24
+       L 230,24
+       L 168,488
+       C 148,488 90,488 56,476
+       C 38,468 32,452 32,432
+       L 32,78
+       C 32,54 36,38 40,32 Z"
+    fill="url(#curtain-left)"
+    filter="url(#curtain-glow)"
+  />
+
+  <!-- Right curtain leg: skewed trapezoid, wider at top, converges towards bottom-center -->
+  <path
+    d="M 294,24
+       L 462,24
+       C 474,24 480,34 480,54
+       L 480,432
+       C 480,452 472,472 458,480
+       L 352,488
+       Z"
+    fill="url(#curtain-right)"
+    filter="url(#curtain-glow)"
+  />
+
+  <!-- Play button triangle pointing right, centered in the negative space between curtains -->
+  <polygon
+    points="190,170  190,342  362,256"
+    fill="rgba(255,255,255,0.95)"
+    filter="url(#arrow-shadow)"
+  />
+</svg>

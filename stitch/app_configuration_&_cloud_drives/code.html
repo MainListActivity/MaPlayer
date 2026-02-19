@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <title>StreamConfig - Settings</title>
+    <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;700;900&amp;display=swap"
+        rel="stylesheet" />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+        rel="stylesheet" />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+        rel="stylesheet" />
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#f47b25",
+                        "background-light": "#f6f6f8",
+                        "background-dark": "#101622",
+                        "surface-dark": "#192233",
+                        "surface-highlight": "#232f48",
+                        "text-secondary": "#92a4c9",
+                    },
+                    fontFamily: {
+                        "display": ["Be Vietnam Pro", "sans-serif"]
+                    },
+                    borderRadius: {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "2xl": "1rem",
+                        "full": "9999px"
+                    },
+                },
+            },
+        }
+    </script>
+    <style>
+        body {
+            font-family: "Be Vietnam Pro", sans-serif;
+        }
+
+        /* Custom scrollbar for webkit */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #101622;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #232f48;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #324467;
+        }
+    </style>
+</head>
+
+<body
+    class="bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 min-h-screen flex flex-col font-display antialiased selection:bg-primary selection:text-white overflow-x-hidden">
+    <!-- Top Navigation -->
+    <header
+        class="flex items-center justify-between whitespace-nowrap border-b border-solid border-b-surface-highlight px-6 py-4 lg:px-10">
+        <a class="group flex items-center gap-3" href="#">
+            <div class="relative flex h-9 w-9 items-center justify-center flex-shrink-0">
+                <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" class="w-full h-full">
+                    <defs>
+                        <linearGradient id="acd-lg-l" x1="0" y1="0" x2="1" y2="1">
+                            <stop offset="0%" stop-color="#f47b25" />
+                            <stop offset="100%" stop-color="#e53935" />
+                        </linearGradient>
+                        <linearGradient id="acd-lg-r" x1="1" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stop-color="#f47b25" />
+                            <stop offset="100%" stop-color="#e53935" />
+                        </linearGradient>
+                    </defs>
+                    <path d="M1,3 C2,1 4,1 6,1 L18,1 L12,39 C10,39 4,39 2,37 Z" fill="url(#acd-lg-l)" />
+                    <path d="M23,1 L37,1 C38,1 39,2 39,3 L39,37 C38,39 36,39 34,39 L28,39 Z" fill="url(#acd-lg-r)" />
+                    <polygon points="15,13 15,27 26,20" fill="rgba(255,255,255,0.92)" />
+                </svg>
+            </div>
+            <h2
+                class="text-white text-xl font-bold leading-tight tracking-[-0.015em] group-hover:text-primary transition-colors">
+                Ma Player</h2>
+        </a>
+        <div class="hidden md:flex flex-1 justify-center gap-8 px-8">
+            <nav class="flex items-center gap-9">
+                <a class="text-text-secondary hover:text-white transition-colors text-sm font-medium leading-normal"
+                    href="#">Home</a>
+                <a class="text-text-secondary hover:text-white transition-colors text-sm font-medium leading-normal"
+                    href="#">Movies</a>
+                <a class="text-text-secondary hover:text-white transition-colors text-sm font-medium leading-normal"
+                    href="#">TV Shows</a>
+                <a class="text-white text-sm font-medium leading-normal" href="#">Settings</a>
+            </nav>
+        </div>
+        <div class="flex items-center gap-3">
+            <button
+                class="flex size-10 cursor-pointer items-center justify-center overflow-hidden rounded-lg bg-surface-highlight text-white hover:bg-[#324467] transition-colors">
+                <span class="material-symbols-outlined">settings</span>
+            </button>
+            <button
+                class="flex size-10 cursor-pointer items-center justify-center overflow-hidden rounded-lg bg-surface-highlight text-white hover:bg-[#324467] transition-colors relative">
+                <span class="material-symbols-outlined">account_circle</span>
+                <span
+                    class="absolute top-2 right-2 size-2 bg-primary rounded-full border border-surface-highlight"></span>
+            </button>
+        </div>
+    </header>
+    <!-- Main Content Area -->
+    <main class="flex-1 w-full max-w-[1200px] mx-auto px-4 py-8 lg:px-8">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+            <!-- Sidebar Navigation (Desktop) -->
+            <aside class="hidden lg:block lg:col-span-3">
+                <div class="sticky top-8 flex flex-col gap-2">
+                    <p class="text-xs font-bold text-text-secondary uppercase tracking-wider mb-2 px-3">Settings</p>
+                    <a class="flex items-center gap-3 px-3 py-2 rounded-lg bg-surface-highlight/50 text-white font-medium"
+                        href="#">
+                        <span class="material-symbols-outlined text-[20px]">tune</span>
+                        General
+                    </a>
+                    <a class="flex items-center gap-3 px-3 py-2 rounded-lg text-text-secondary hover:text-white hover:bg-surface-highlight/30 transition-colors"
+                        href="#">
+                        <span class="material-symbols-outlined text-[20px]">play_circle</span>
+                        Playback
+                    </a>
+                    <a class="flex items-center gap-3 px-3 py-2 rounded-lg text-text-secondary hover:text-white hover:bg-surface-highlight/30 transition-colors"
+                        href="#">
+                        <span class="material-symbols-outlined text-[20px]">cloud_queue</span>
+                        Cloud Services
+                    </a>
+                    <a class="flex items-center gap-3 px-3 py-2 rounded-lg text-text-secondary hover:text-white hover:bg-surface-highlight/30 transition-colors"
+                        href="#">
+                        <span class="material-symbols-outlined text-[20px]">lock</span>
+                        Security
+                    </a>
+                    <a class="flex items-center gap-3 px-3 py-2 rounded-lg text-text-secondary hover:text-white hover:bg-surface-highlight/30 transition-colors"
+                        href="#">
+                        <span class="material-symbols-outlined text-[20px]">info</span>
+                        About
+                    </a>
+                </div>
+            </aside>
+            <!-- Configuration Content -->
+            <div class="lg:col-span-9 flex flex-col gap-8">
+                <!-- Header -->
+                <div class="flex flex-col gap-2 border-b border-surface-highlight pb-6">
+                    <h1 class="text-3xl font-black tracking-tight text-white">Configuration</h1>
+                    <p class="text-text-secondary text-base">Manage your data sources and cloud drive connections to
+                        sync your library.</p>
+                </div>
+                <!-- Data Source Section -->
+                <section class="flex flex-col gap-5">
+                    <div class="flex items-center justify-between">
+                        <h2 class="text-xl font-bold text-white flex items-center gap-2">
+                            <span class="material-symbols-outlined text-primary">rss_feed</span>
+                            Data Source
+                        </h2>
+                    </div>
+                    <div class="bg-surface-dark rounded-xl p-6 border border-surface-highlight shadow-sm">
+                        <label class="block mb-4">
+                            <span class="text-sm font-medium text-white block mb-2">Subscription URL</span>
+                            <span class="text-xs text-text-secondary block mb-3">Enter the URL provided by your
+                                subscription service to load channels and VODs.</span>
+                            <div class="relative flex items-center group">
+                                <div
+                                    class="absolute left-4 text-text-secondary pointer-events-none group-focus-within:text-primary transition-colors">
+                                    <span class="material-symbols-outlined">link</span>
+                                </div>
+                                <input
+                                    class="w-full bg-[#111722] border border-surface-highlight text-white text-sm rounded-lg focus:ring-primary focus:border-primary block pl-12 p-3.5 placeholder-slate-500 transition-all"
+                                    placeholder="https://example.com/api/v1/playlist.m3u" type="text"
+                                    value="https://api.streamconfig.io/v1/user/sub_8832102" />
+                                <div class="absolute right-3">
+                                    <span
+                                        class="flex h-6 w-6 items-center justify-center rounded-full bg-green-500/20 text-green-500">
+                                        <span class="material-symbols-outlined text-sm font-bold">check</span>
+                                    </span>
+                                </div>
+                            </div>
+                        </label>
+                        <div class="flex justify-end pt-2">
+                            <button
+                                class="bg-primary hover:bg-blue-600 text-white font-medium rounded-lg text-sm px-5 py-2.5 text-center inline-flex items-center gap-2 transition-colors shadow-lg shadow-blue-900/20">
+                                <span class="material-symbols-outlined text-[18px]">sync</span>
+                                Update Source
+                            </button>
+                        </div>
+                    </div>
+                </section>
+                <!-- Cloud Services Section -->
+                <section class="flex flex-col gap-5">
+                    <div class="flex items-center justify-between">
+                        <h2 class="text-xl font-bold text-white flex items-center gap-2">
+                            <span class="material-symbols-outlined text-primary">cloud</span>
+                            Cloud Drives
+                        </h2>
+                        <button class="text-sm text-primary hover:text-white font-medium transition-colors">Add New
+                            Service</button>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <!-- Card: Aliyun Drive (Connected) -->
+                        <div
+                            class="bg-surface-dark rounded-xl p-5 border border-surface-highlight hover:border-primary/50 transition-all group">
+                            <div class="flex items-start justify-between mb-4">
+                                <div class="flex items-center gap-3">
+                                    <div
+                                        class="size-10 rounded-lg bg-gradient-to-br from-orange-400 to-orange-600 flex items-center justify-center text-white shadow-lg shadow-orange-900/20">
+                                        <span class="material-symbols-outlined">cloud_circle</span>
+                                    </div>
+                                    <div>
+                                        <h3 class="text-white font-bold text-base">Aliyun Drive</h3>
+                                        <div class="flex items-center gap-1.5 mt-0.5">
+                                            <span class="relative flex h-2 w-2">
+                                                <span
+                                                    class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                                                <span
+                                                    class="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                                            </span>
+                                            <span class="text-xs text-green-400 font-medium">Connected</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <button class="text-text-secondary hover:text-white transition-colors">
+                                    <span class="material-symbols-outlined">more_vert</span>
+                                </button>
+                            </div>
+                            <div
+                                class="flex items-center justify-between mt-6 pt-4 border-t border-surface-highlight/50">
+                                <div class="flex flex-col">
+                                    <span class="text-xs text-text-secondary">Used Space</span>
+                                    <span class="text-sm font-medium text-white">1.2 TB / 5 TB</span>
+                                </div>
+                                <button
+                                    class="text-sm bg-surface-highlight hover:bg-[#324467] text-white px-4 py-2 rounded-lg font-medium transition-colors">
+                                    Manage
+                                </button>
+                            </div>
+                        </div>
+                        <!-- Card: Quark Drive (Not Logged In) -->
+                        <div
+                            class="bg-surface-dark rounded-xl p-5 border border-surface-highlight hover:border-primary/50 transition-all group">
+                            <div class="flex items-start justify-between mb-4">
+                                <div class="flex items-center gap-3">
+                                    <div
+                                        class="size-10 rounded-lg bg-gradient-to-br from-blue-400 to-cyan-500 flex items-center justify-center text-white shadow-lg shadow-cyan-900/20">
+                                        <span class="material-symbols-outlined">folder_shared</span>
+                                    </div>
+                                    <div>
+                                        <h3 class="text-white font-bold text-base">Quark Drive</h3>
+                                        <div class="flex items-center gap-1.5 mt-0.5">
+                                            <span class="h-2 w-2 rounded-full bg-slate-500"></span>
+                                            <span class="text-xs text-slate-400 font-medium">Not Connected</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <button class="text-text-secondary hover:text-white transition-colors">
+                                    <span class="material-symbols-outlined">more_vert</span>
+                                </button>
+                            </div>
+                            <div
+                                class="flex items-center justify-between mt-6 pt-4 border-t border-surface-highlight/50">
+                                <p class="text-xs text-text-secondary max-w-[120px] truncate">Sign in to access files
+                                </p>
+                                <button
+                                    class="text-sm bg-primary/10 hover:bg-primary text-primary hover:text-white border border-primary/20 hover:border-primary px-4 py-2 rounded-lg font-medium transition-all">
+                                    Login
+                                </button>
+                            </div>
+                        </div>
+                        <!-- Card: PikPak (Connected) -->
+                        <div
+                            class="bg-surface-dark rounded-xl p-5 border border-surface-highlight hover:border-primary/50 transition-all group">
+                            <div class="flex items-start justify-between mb-4">
+                                <div class="flex items-center gap-3">
+                                    <div
+                                        class="size-10 rounded-lg bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white shadow-lg shadow-purple-900/20">
+                                        <span class="material-symbols-outlined">rocket_launch</span>
+                                    </div>
+                                    <div>
+                                        <h3 class="text-white font-bold text-base">PikPak</h3>
+                                        <div class="flex items-center gap-1.5 mt-0.5">
+                                            <span class="relative flex h-2 w-2">
+                                                <span
+                                                    class="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                                            </span>
+                                            <span class="text-xs text-green-400 font-medium">Connected</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <button class="text-text-secondary hover:text-white transition-colors">
+                                    <span class="material-symbols-outlined">more_vert</span>
+                                </button>
+                            </div>
+                            <div
+                                class="flex items-center justify-between mt-6 pt-4 border-t border-surface-highlight/50">
+                                <div class="flex flex-col">
+                                    <span class="text-xs text-text-secondary">Used Space</span>
+                                    <span class="text-sm font-medium text-white">450 GB / 2 TB</span>
+                                </div>
+                                <button
+                                    class="text-sm bg-surface-highlight hover:bg-[#324467] text-white px-4 py-2 rounded-lg font-medium transition-colors">
+                                    Manage
+                                </button>
+                            </div>
+                        </div>
+                        <!-- Card: WebDAV (Not Configured) -->
+                        <div
+                            class="bg-surface-dark rounded-xl p-5 border border-surface-highlight hover:border-primary/50 transition-all group border-dashed">
+                            <div class="flex items-start justify-between mb-4">
+                                <div class="flex items-center gap-3">
+                                    <div
+                                        class="size-10 rounded-lg bg-surface-highlight flex items-center justify-center text-text-secondary group-hover:text-white transition-colors">
+                                        <span class="material-symbols-outlined">dns</span>
+                                    </div>
+                                    <div>
+                                        <h3
+                                            class="text-text-secondary group-hover:text-white transition-colors font-bold text-base">
+                                            WebDAV</h3>
+                                        <div class="flex items-center gap-1.5 mt-0.5">
+                                            <span class="h-2 w-2 rounded-full bg-slate-600"></span>
+                                            <span class="text-xs text-slate-500 font-medium">Add Custom</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div
+                                class="flex items-center justify-between mt-6 pt-4 border-t border-surface-highlight/50">
+                                <p class="text-xs text-text-secondary">Connect your NAS</p>
+                                <button
+                                    class="text-sm bg-transparent hover:bg-surface-highlight text-text-secondary hover:text-white border border-surface-highlight px-4 py-2 rounded-lg font-medium transition-colors">
+                                    Configure
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+                <!-- Advanced Settings Snippet -->
+                <section class="mt-4">
+                    <div
+                        class="bg-surface-highlight/20 rounded-xl p-4 flex items-center gap-4 border border-surface-highlight">
+                        <div class="p-2 bg-primary/20 rounded-lg text-primary">
+                            <span class="material-symbols-outlined">info</span>
+                        </div>
+                        <div class="flex-1">
+                            <h4 class="text-white font-bold text-sm">Need help connecting?</h4>
+                            <p class="text-text-secondary text-xs mt-1">Check out our guide on how to obtain API tokens
+                                for Aliyun and Quark drives.</p>
+                        </div>
+                        <a class="text-sm text-primary hover:text-white font-medium whitespace-nowrap" href="#">View
+                            Guide →</a>
+                    </div>
+                </section>
+            </div>
+        </div>
+    </main>
+</body>
+
+</html>

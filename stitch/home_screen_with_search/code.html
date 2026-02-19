@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>StreamFlow - Home</title>
+<!-- Google Fonts -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;700;900&amp;display=swap" rel="stylesheet"/>
+<!-- Material Symbols -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- Theme Configuration -->
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        primary: "#f47b25",
+                        "background-light": "#f6f6f8",
+                        "background-dark": "#101622",
+                        "card-dark": "#1a2332",
+                    },
+                    fontFamily: {
+                        display: ["Be Vietnam Pro", "sans-serif"],
+                    },
+                    borderRadius: {
+                        DEFAULT: "0.25rem",
+                        lg: "0.5rem",
+                        xl: "0.75rem",
+                        full: "9999px",
+                    },
+                },
+            },
+        }
+    </script>
+<style>
+        /* Custom scrollbar for horizontal scrolling sections */
+        .scrollbar-hide::-webkit-scrollbar {
+            display: none;
+        }
+        .scrollbar-hide {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        
+        .fade-bottom {
+            background: linear-gradient(to top, #101622 0%, transparent 100%);
+        }
+    </style>
+</head>
+<body class="bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 font-display min-h-screen flex flex-col antialiased overflow-x-hidden">
+<!-- Header Navigation -->
+<header class="sticky top-0 z-50 flex items-center justify-between whitespace-nowrap border-b border-solid border-slate-200 dark:border-[#232f48] bg-background-light/95 dark:bg-[#111722]/95 backdrop-blur-sm px-6 py-3 lg:px-10">
+<div class="flex items-center gap-8">
+<a class="group flex items-center gap-3" href="#">
+<div class="relative flex h-10 w-10 items-center justify-center flex-shrink-0">
+<svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" class="w-full h-full">
+<defs>
+<linearGradient id="hss-lg-l" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#f47b25"/><stop offset="100%" stop-color="#e53935"/></linearGradient>
+<linearGradient id="hss-lg-r" x1="1" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#f47b25"/><stop offset="100%" stop-color="#e53935"/></linearGradient>
+</defs>
+<path d="M1,3 C2,1 4,1 6,1 L18,1 L12,39 C10,39 4,39 2,37 Z" fill="url(#hss-lg-l)"/>
+<path d="M23,1 L37,1 C38,1 39,2 39,3 L39,37 C38,39 36,39 34,39 L28,39 Z" fill="url(#hss-lg-r)"/>
+<polygon points="15,13 15,27 26,20" fill="rgba(255,255,255,0.92)"/>
+</svg>
+</div>
+<h2 class="text-slate-900 dark:text-white text-xl font-bold leading-tight tracking-[-0.015em] group-hover:text-primary transition-colors">Ma Player</h2>
+</a>
+<nav class="hidden md:flex items-center gap-9">
+<a class="text-slate-900 dark:text-white text-sm font-bold leading-normal border-b-2 border-primary" href="#">Home</a>
+<a class="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white text-sm font-medium leading-normal transition-colors" href="#">Movies</a>
+<a class="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white text-sm font-medium leading-normal transition-colors" href="#">TV Shows</a>
+<a class="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white text-sm font-medium leading-normal transition-colors" href="#">Settings</a>
+</nav>
+</div>
+<div class="flex flex-1 justify-end gap-4 md:gap-8">
+<div class="hidden sm:flex flex-col min-w-40 h-10 w-full max-w-[320px]">
+<div class="flex w-full flex-1 items-stretch rounded-lg h-full bg-slate-100 dark:bg-[#232f48] border border-transparent focus-within:border-primary transition-colors">
+<div class="text-slate-400 dark:text-[#92a4c9] flex items-center justify-center pl-3">
+<span class="material-symbols-outlined text-[20px]">search</span>
+</div>
+<input class="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-lg bg-transparent text-slate-900 dark:text-white focus:outline-0 focus:ring-0 border-none h-full placeholder:text-slate-400 dark:placeholder:text-[#92a4c9] px-3 text-sm font-normal leading-normal" placeholder="Search titles, genres..."/>
+</div>
+</div>
+<button class="flex items-center justify-center rounded-lg size-10 bg-slate-100 dark:bg-[#232f48] text-slate-900 dark:text-white hover:bg-slate-200 dark:hover:bg-[#2f3e5c] transition-colors">
+<span class="material-symbols-outlined text-[20px]">settings</span>
+</button>
+<button class="sm:hidden flex items-center justify-center rounded-lg size-10 bg-slate-100 dark:bg-[#232f48] text-slate-900 dark:text-white hover:bg-slate-200 dark:hover:bg-[#2f3e5c] transition-colors">
+<span class="material-symbols-outlined text-[20px]">menu</span>
+</button>
+</div>
+</header>
+<main class="flex-1 flex flex-col items-center w-full">
+<div class="w-full max-w-[1440px] px-4 md:px-6 lg:px-10 pb-10">
+<!-- Hero Section -->
+<section class="@container mt-6 mb-10">
+<div class="relative w-full rounded-2xl overflow-hidden shadow-2xl group">
+<!-- Background Image -->
+<div class="absolute inset-0 bg-cover bg-center transition-transform duration-700 group-hover:scale-105" data-alt="Dune Part Two cinematic desert scene with characters walking towards sunset" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuBkNh5DDKXH9xhJa8CF8GCD6vbB5HTQk0BOHYXpQ3GghvuIH03HPs8vUVQIYyxzyTaplKoZhAbxXn83TCGztWyoEZsp6f3PdCyuevX2sVDWt3cPjUJDO73l9EPzz760RIjtBhjdnndCkepazpKZgo88_VnAv9a-itfJAH4pZCrqdbm88ov9DHabzdMNK164J7Urhf_aSoTUgBAgCcdcOvejwR5-PQmm361NUY6EQZt_hZYJ6nkg62zsrbPXaDV0cCirubwCw5Dsjaw-");'>
+</div>
+<!-- Gradient Overlay -->
+<div class="absolute inset-0 bg-gradient-to-t from-background-dark via-background-dark/60 to-transparent"></div>
+<div class="absolute inset-0 bg-gradient-to-r from-background-dark via-background-dark/40 to-transparent"></div>
+<!-- Content -->
+<div class="relative z-10 flex flex-col justify-end min-h-[500px] md:min-h-[600px] p-6 md:p-12 lg:p-16 gap-6 items-start">
+<div class="flex flex-col gap-3 max-w-2xl">
+<div class="flex items-center gap-3">
+<span class="bg-primary/90 text-white text-xs font-bold px-2 py-1 rounded uppercase tracking-wider">New Release</span>
+<span class="text-slate-300 text-sm font-medium flex items-center gap-1">
+<span class="material-symbols-outlined text-sm text-yellow-400">star</span>
+                                    8.8
+                                </span>
+</div>
+<h1 class="text-white text-4xl md:text-5xl lg:text-7xl font-black leading-[1.1] tracking-tight drop-shadow-lg">
+                                Dune: Part Two
+                            </h1>
+<div class="flex items-center flex-wrap gap-x-4 gap-y-2 text-slate-300 text-sm md:text-base font-medium">
+<span>2024</span>
+<span class="size-1 rounded-full bg-slate-500"></span>
+<span>Sci-Fi, Adventure</span>
+<span class="size-1 rounded-full bg-slate-500"></span>
+<span>2h 46m</span>
+<span class="size-1 rounded-full bg-slate-500"></span>
+<span class="border border-slate-500 px-1 rounded text-xs">PG-13</span>
+</div>
+<p class="text-slate-300 text-sm md:text-lg line-clamp-3 md:line-clamp-2 max-w-xl drop-shadow-md">
+                                Paul Atreides unites with Chani and the Fremen while on a warpath of revenge against the conspirators who destroyed his family.
+                            </p>
+</div>
+<div class="flex flex-wrap gap-4 mt-2">
+<button class="flex items-center gap-2 bg-primary hover:bg-primary/90 text-white px-6 h-12 rounded-lg font-bold text-base transition-all transform hover:scale-105 shadow-lg shadow-primary/25">
+<span class="material-symbols-outlined fill-current">play_arrow</span>
+                                Play Now
+                            </button>
+<button class="flex items-center gap-2 bg-white/10 hover:bg-white/20 backdrop-blur-md text-white px-6 h-12 rounded-lg font-bold text-base transition-colors border border-white/10">
+<span class="material-symbols-outlined">add</span>
+                                Watchlist
+                            </button>
+<button aria-label="More Info" class="flex items-center justify-center size-12 rounded-lg bg-white/10 hover:bg-white/20 backdrop-blur-md text-white transition-colors border border-white/10">
+<span class="material-symbols-outlined">info</span>
+</button>
+</div>
+</div>
+</div>
+</section>
+<!-- Prominent Mobile Search (Visible only on small screens) -->
+<div class="block sm:hidden mb-8">
+<div class="flex w-full items-stretch rounded-lg h-12 bg-[#232f48]">
+<div class="text-[#92a4c9] flex items-center justify-center pl-4">
+<span class="material-symbols-outlined">search</span>
+</div>
+<input class="w-full bg-transparent text-white border-none focus:ring-0 placeholder:text-[#92a4c9] px-3" placeholder="Search for movies..."/>
+</div>
+</div>
+<!-- Continue Watching Section -->
+<section class="mb-10">
+<div class="flex items-center justify-between mb-4 px-1">
+<h2 class="text-slate-900 dark:text-white text-xl md:text-2xl font-bold">Continue Watching</h2>
+<div class="flex gap-2">
+<button class="size-8 rounded-full bg-slate-200 dark:bg-[#232f48] text-slate-600 dark:text-slate-300 flex items-center justify-center hover:bg-primary hover:text-white transition-colors">
+<span class="material-symbols-outlined text-sm">arrow_back_ios_new</span>
+</button>
+<button class="size-8 rounded-full bg-slate-200 dark:bg-[#232f48] text-slate-600 dark:text-slate-300 flex items-center justify-center hover:bg-primary hover:text-white transition-colors">
+<span class="material-symbols-outlined text-sm">arrow_forward_ios</span>
+</button>
+</div>
+</div>
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+<!-- Card 1 -->
+<div class="group relative flex flex-col gap-3 p-3 rounded-xl bg-white dark:bg-card-dark shadow-sm hover:shadow-md transition-all duration-300 cursor-pointer">
+<div class="relative aspect-video rounded-lg overflow-hidden bg-slate-800">
+<div class="absolute inset-0 bg-cover bg-center transition-transform duration-500 group-hover:scale-110" data-alt="Inception dream sequence with city bending" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuDpOPkuO6fRrXmQnQwd2bEcGcYu_m76W2zrGywO1NmcYy_DTmyLfJPmQF_S6zoqtYOUDWrMrorwi9F3GJ-ni8e40LEskYesXDGiKWq0OiRWGGfJIWElYHZckx2g4ufz-IBBmAl8bqkfar_G0glevsHnqVooy-frgP9NZyIZBzl1yliJAQcCbc3Lnkon8EeIYXMK9DBDyvuuzaB9uwVlVkyCnQd6HiJqj19sDhBWKkVEJI6Lqb8w1qPH_rg5etFD9Q6YZFJYszndE4Me");'></div>
+<div class="absolute inset-0 bg-black/20 group-hover:bg-black/40 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
+<div class="size-10 rounded-full bg-primary/90 text-white flex items-center justify-center shadow-lg transform scale-0 group-hover:scale-100 transition-transform duration-300">
+<span class="material-symbols-outlined">play_arrow</span>
+</div>
+</div>
+<!-- Progress Bar -->
+<div class="absolute bottom-0 left-0 right-0 h-1 bg-white/20">
+<div class="h-full bg-primary w-[75%] shadow-[0_0_8px_rgba(19,91,236,0.8)]"></div>
+</div>
+</div>
+<div class="px-1 pb-1">
+<div class="flex justify-between items-start">
+<div>
+<h3 class="text-slate-900 dark:text-white font-bold text-base line-clamp-1">Inception</h3>
+<p class="text-slate-500 dark:text-slate-400 text-xs mt-1">1h 24m remaining</p>
+</div>
+<button class="text-slate-400 hover:text-white transition-colors">
+<span class="material-symbols-outlined text-lg">more_vert</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Card 2 -->
+<div class="group relative flex flex-col gap-3 p-3 rounded-xl bg-white dark:bg-card-dark shadow-sm hover:shadow-md transition-all duration-300 cursor-pointer">
+<div class="relative aspect-video rounded-lg overflow-hidden bg-slate-800">
+<div class="absolute inset-0 bg-cover bg-center transition-transform duration-500 group-hover:scale-110" data-alt="Stranger Things dark forest scene with red lighting" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuAaQObjLlTbd92Cnc4dAtMznk5HZRwPs6XmEzU0icZELONBT6yA3d0V5dN8hnHObni4ynzelIopq-YuMgZNsely4uiLuP6UhJFuPT8qMCEyzvJgGrzdL2XS_hj_Y1bz4UjcxvLCn8RE0y5AW2ORETyUryLcrR99pJalRqcuLll1JgwHhpoTtI2iX0gATX6jbTqXOdrNyV3ZK8RZpeCfENdVnK0rIS2lqqHjRiN66TFq2hgKzkX2v2YNLFNCXLtwFz5-7QKJ2OHNTvue");'></div>
+<div class="absolute inset-0 bg-black/20 group-hover:bg-black/40 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
+<div class="size-10 rounded-full bg-primary/90 text-white flex items-center justify-center shadow-lg transform scale-0 group-hover:scale-100 transition-transform duration-300">
+<span class="material-symbols-outlined">play_arrow</span>
+</div>
+</div>
+<!-- Progress Bar -->
+<div class="absolute bottom-0 left-0 right-0 h-1 bg-white/20">
+<div class="h-full bg-primary w-[30%] shadow-[0_0_8px_rgba(19,91,236,0.8)]"></div>
+</div>
+</div>
+<div class="px-1 pb-1">
+<div class="flex justify-between items-start">
+<div>
+<h3 class="text-slate-900 dark:text-white font-bold text-base line-clamp-1">Stranger Things</h3>
+<p class="text-slate-500 dark:text-slate-400 text-xs mt-1">S4:E2 • 12m remaining</p>
+</div>
+<button class="text-slate-400 hover:text-white transition-colors">
+<span class="material-symbols-outlined text-lg">more_vert</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Card 3 -->
+<div class="hidden lg:flex group relative flex-col gap-3 p-3 rounded-xl bg-white dark:bg-card-dark shadow-sm hover:shadow-md transition-all duration-300 cursor-pointer">
+<div class="relative aspect-video rounded-lg overflow-hidden bg-slate-800">
+<div class="absolute inset-0 bg-cover bg-center transition-transform duration-500 group-hover:scale-110" data-alt="Cyberpunk futuristic city skyline with neon lights" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuBgfRY0CSmpMvm-Kh--2y1tNkcfqwJ2uPGCWTyyVx6lI_HwQ5I7f3GGsrOjcP0z_5M00TI2n0bOjx6ZPZil1xJatyDYRQmWrQZ9XAq_v3F0drgeM9dKDiNsyOZsL06EzncnL_IuNQLDIKWslLkaOysrry0fHB6YQYg97SM-v3sE7kPRIT9boKhEtPoJ0lYgH8onSfJmPCEnVFNCBE2J61QO36NrTz0V5wSGOd7bDuSK3VW6DzpLzfDd9NIXwrK1tBTRfdYhXl5BuZUB");'></div>
+<div class="absolute inset-0 bg-black/20 group-hover:bg-black/40 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
+<div class="size-10 rounded-full bg-primary/90 text-white flex items-center justify-center shadow-lg transform scale-0 group-hover:scale-100 transition-transform duration-300">
+<span class="material-symbols-outlined">play_arrow</span>
+</div>
+</div>
+<!-- Progress Bar -->
+<div class="absolute bottom-0 left-0 right-0 h-1 bg-white/20">
+<div class="h-full bg-primary w-[90%] shadow-[0_0_8px_rgba(19,91,236,0.8)]"></div>
+</div>
+</div>
+<div class="px-1 pb-1">
+<div class="flex justify-between items-start">
+<div>
+<h3 class="text-slate-900 dark:text-white font-bold text-base line-clamp-1">Blade Runner 2049</h3>
+<p class="text-slate-500 dark:text-slate-400 text-xs mt-1">4m remaining</p>
+</div>
+<button class="text-slate-400 hover:text-white transition-colors">
+<span class="material-symbols-outlined text-lg">more_vert</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Card 4 -->
+<div class="hidden xl:flex group relative flex-col gap-3 p-3 rounded-xl bg-white dark:bg-card-dark shadow-sm hover:shadow-md transition-all duration-300 cursor-pointer">
+<div class="relative aspect-video rounded-lg overflow-hidden bg-slate-800">
+<div class="absolute inset-0 bg-cover bg-center transition-transform duration-500 group-hover:scale-110" data-alt="Abstract cinematic lighting dark atmosphere" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuBLbs-vdnatNIKho2z35Zh0HrFTXI-XwI-cWrSBWjBkPkwe-87zd0olfNxhAXaSHZrusJHtLHQJWbozr1AYqpdkUNr7GOV_OtEh92UQgihdvjGmpxDH3ylJcJITV9xARtfQJhkz1zWN8Wc6pf-nL1-wg33bY-aKnToJZ8nPhF0F2awDGj-PEPt1prIcen-EmTH_bkMqglVYv4LuimKC98jyPDMNLYndVmy_U0ILEzWKHMV2PZM_bjaFWr4UEmI23gVp9bl3NjONj9xF");'></div>
+<div class="absolute inset-0 bg-black/20 group-hover:bg-black/40 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
+<div class="size-10 rounded-full bg-primary/90 text-white flex items-center justify-center shadow-lg transform scale-0 group-hover:scale-100 transition-transform duration-300">
+<span class="material-symbols-outlined">play_arrow</span>
+</div>
+</div>
+<!-- Progress Bar -->
+<div class="absolute bottom-0 left-0 right-0 h-1 bg-white/20">
+<div class="h-full bg-primary w-[15%] shadow-[0_0_8px_rgba(19,91,236,0.8)]"></div>
+</div>
+</div>
+<div class="px-1 pb-1">
+<div class="flex justify-between items-start">
+<div>
+<h3 class="text-slate-900 dark:text-white font-bold text-base line-clamp-1">The Batman</h3>
+<p class="text-slate-500 dark:text-slate-400 text-xs mt-1">2h 40m remaining</p>
+</div>
+<button class="text-slate-400 hover:text-white transition-colors">
+<span class="material-symbols-outlined text-lg">more_vert</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Recommended Movies (Horizontal Scroll) -->
+<section class="mb-10 w-full overflow-hidden">
+<div class="flex items-center justify-between mb-4 px-1">
+<h2 class="text-slate-900 dark:text-white text-xl md:text-2xl font-bold">Recommended Movies</h2>
+<a class="text-primary text-sm font-bold hover:text-primary/80" href="#">See all</a>
+</div>
+<div class="flex gap-4 overflow-x-auto pb-4 scrollbar-hide snap-x snap-mandatory">
+<!-- Movie Poster 1 -->
+<div class="snap-start shrink-0 w-[160px] md:w-[200px] group cursor-pointer">
+<div class="relative aspect-[2/3] rounded-lg overflow-hidden bg-slate-800 shadow-lg mb-3">
+<div class="absolute inset-0 bg-cover bg-center transition-transform duration-500 group-hover:scale-110" data-alt="Oppenheimer movie poster abstract with fire and smoke" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuDY-1LJeioWL7wet1HN3CCzGHuMKOLdHvZPSE5CMhVFl96iHkw7zVS07YfKPyy_TkqOUKJCLj-dd88tezX_eORaXbzdSQPdE4wElf7vdAMJfuAZkTjQXxAE30esjwuwvd_DPjZU0jNI7NYUHWYGMN1SuAerbNlxCiG6yHhJvi17qeMcwe__tSMoFlMzKMPSPZHMxy5Iu0mZD_uCoajrITR6LUDEjgddjQ8cgqRHDxGJ6tV70DlOZOQz3fb7AAbaBMldhcPTXJD5iwR-");'></div>
+<div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2">
+<span class="bg-primary text-white rounded-full p-3 shadow-lg transform translate-y-4 group-hover:translate-y-0 transition-transform">
+<span class="material-symbols-outlined">play_arrow</span>
+</span>
+</div>
+<div class="absolute top-2 left-2 bg-black/60 backdrop-blur-sm px-2 py-0.5 rounded text-xs font-bold text-white">4K</div>
+</div>
+<h3 class="text-slate-900 dark:text-white font-bold text-base leading-tight group-hover:text-primary transition-colors">Oppenheimer</h3>
+<p class="text-slate-500 dark:text-slate-400 text-sm mt-1">2023 • Biography</p>
+</div>
+<!-- Movie Poster 2 -->
+<div class="snap-start shrink-0 w-[160px] md:w-[200px] group cursor-pointer">
+<div class="relative aspect-[2/3] rounded-lg overflow-hidden bg-slate-800 shadow-lg mb-3">
+<div class="absolute inset-0 bg-cover bg-center transition-transform duration-500 group-hover:scale-110" data-alt="Interstellar space scene with black hole" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuBJr4i5X-f54t8cDmZuWPc4zNhziGFCHfCqiuDHSpMNP3GdT87K78HKvQns4wOSnsM38XWVYPovBR0McA2QevDQ_W7cywXaEBPaB9PhPqsOL1J_kSVLU3XJV-nxJ0jfsJwttWQSRj2S5BemrWiQHB_rmJ96CX1vIgQvYIk1a_8WPDHxb4C9NWbl3ksHD3wGPed5pqg8r7p6YTpNrdQuHeHj1jEC1Txzvnyl-x8uBOELSGby-McaNg_EV-v-DtdWD1LCMPv6TY4BYss1");'></div>
+<div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2">
+<span class="bg-primary text-white rounded-full p-3 shadow-lg transform translate-y-4 group-hover:translate-y-0 transition-transform">
+<span class="material-symbols-outlined">play_arrow</span>
+</span>
+</div>
+</div>
+<h3 class="text-slate-900 dark:text-white font-bold text-base leading-tight group-hover:text-primary transition-colors">Interstellar</h3>
+<p class="text-slate-500 dark:text-slate-400 text-sm mt-1">2014 • Sci-Fi</p>
+</div>
+<!-- Movie Poster 3 -->
+<div class="snap-start shrink-0 w-[160px] md:w-[200px] group cursor-pointer">
+<div class="relative aspect-[2/3] rounded-lg overflow-hidden bg-slate-800 shadow-lg mb-3">
+<div class="absolute inset-0 bg-cover bg-center transition-transform duration-500 group-hover:scale-110" data-alt="Dark shadowy figure in red lighting" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuBeYp1bAzq56VjzG9uRHUZdCnZDAEZVwBxQXEWJRcZ6nLoVp_PeetDUnIAJTsQ2Y3B1l49bYRv2E06vIujPNq7srOeY3h94wsqhgGexckbF3G6wzDGG2saj_uw-X5KkArKr2mfB8ImuJ2K_UaUItRwvabCZK9P3HeqWuTdoPcWHMm3AbsixycLs5HIlu1dOYX_U9L-S1IwniqMKIbTVArPzK2Kw-skR7s5YERPD1sOi9su4lt2E_zb8fqWnxK2YXqT62BTBX0N8v0kv");'></div>
+<div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2">
+<span class="bg-primary text-white rounded-full p-3 shadow-lg transform translate-y-4 group-hover:translate-y-0 transition-transform">
+<span class="material-symbols-outlined">play_arrow</span>
+</span>
+</div>
+</div>
+<h3 class="text-slate-900 dark:text-white font-bold text-base leading-tight group-hover:text-primary transition-colors">John Wick 4</h3>
+<p class="text-slate-500 dark:text-slate-400 text-sm mt-1">2023 • Action</p>
+</div>
+<!-- Movie Poster 4 -->
+<div class="snap-start shrink-0 w-[160px] md:w-[200px] group cursor-pointer">
+<div class="relative aspect-[2/3] rounded-lg overflow-hidden bg-slate-800 shadow-lg mb-3">
+<div class="absolute inset-0 bg-cover bg-center transition-transform duration-500 group-hover:scale-110" data-alt="Spider-Man stylized animation art" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuCvirAdmQWhK8SBjn-o5x5kC2AzN7oSGts3DdXDA_Ld-A2XL1H3KmYqS7OzcV01sL9iOyndyCGgWwvAzXWNoF9bhxJ71whnfBevft68qFkoPBd51ZGMTqjqpBhnVecca4vOsdK69o-skqsmaZZ9lqJBxKPDPLnZKztqiHjcj6-axH6QbY36W3nH1GuBvNSDwE34nH7DzIsFCcHmw_v7umz0Ve-wJ8oFVnY_1bdTxP8cIq1ozzR_XymAen-kwT2WywP7KV1831-EMMPd");'></div>
+<div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2">
+<span class="bg-primary text-white rounded-full p-3 shadow-lg transform translate-y-4 group-hover:translate-y-0 transition-transform">
+<span class="material-symbols-outlined">play_arrow</span>
+</span>
+</div>
+<div class="absolute top-2 left-2 bg-black/60 backdrop-blur-sm px-2 py-0.5 rounded text-xs font-bold text-white">HDR</div>
+</div>
+<h3 class="text-slate-900 dark:text-white font-bold text-base leading-tight group-hover:text-primary transition-colors">Spider-Man: ATSV</h3>
+<p class="text-slate-500 dark:text-slate-400 text-sm mt-1">2023 • Animation</p>
+</div>
+<!-- Movie Poster 5 -->
+<div class="snap-start shrink-0 w-[160px] md:w-[200px] group cursor-pointer">
+<div class="relative aspect-[2/3] rounded-lg overflow-hidden bg-slate-800 shadow-lg mb-3">
+<div class="absolute inset-0 bg-cover bg-center transition-transform duration-500 group-hover:scale-110" data-alt="Classic vintage movie style poster" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuC1KS5C9QcfvOJuvFwx__ErpiC_csL5VwSZ5ARmA88e532m-cSa5Dfs_8cBRcyDxRk8IEq2TOOq-8A1trl2gDWJKzoZUNjYubvUSxp27IUMiWNHPX9Gna7LKXvNAqa8B32GR-kXsvWJNs237z4e4q5_DopzWB7hcC1RjLHN6F5ogKWEhA3R_W3Mn6kxaPZ6o28MidKYAfPx9sb4wQuuagdZ60qdWrCCIpQqWhu6uIYeNJ7_a_2Uz-bq-JP5MFI8xWEkwaxNjU1FmPJo");'></div>
+<div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2">
+<span class="bg-primary text-white rounded-full p-3 shadow-lg transform translate-y-4 group-hover:translate-y-0 transition-transform">
+<span class="material-symbols-outlined">play_arrow</span>
+</span>
+</div>
+</div>
+<h3 class="text-slate-900 dark:text-white font-bold text-base leading-tight group-hover:text-primary transition-colors">Pulp Fiction</h3>
+<p class="text-slate-500 dark:text-slate-400 text-sm mt-1">1994 • Crime</p>
+</div>
+<!-- Movie Poster 6 -->
+<div class="snap-start shrink-0 w-[160px] md:w-[200px] group cursor-pointer">
+<div class="relative aspect-[2/3] rounded-lg overflow-hidden bg-slate-800 shadow-lg mb-3">
+<div class="absolute inset-0 bg-cover bg-center transition-transform duration-500 group-hover:scale-110" data-alt="Futuristic glowing neon city" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuD3ECgUU3qoVPu_Xbouspmh3yy8UISewE-bbm2lHA2P-Y4T4aGRknp9N48zN6lni5abxq5CjJxUdVEMb9iCOVodLFFgy5dUyqkHKq8-q7ZY5Ms6sCIkoLfpI_eyO1VRU8VU26llTwZr4CJdfCkO7uNFrt9AMpcN9rjNth-jo_DvWPFlfFd1aaJUavUKsaGeTOG4VYa4w3-MO5icGfs1mEz-Wdf8DGaoq48qdjyfzHle7GzbPY-6FRqN3QiZ6IEI4NQqiw403GmylEFN");'></div>
+<div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2">
+<span class="bg-primary text-white rounded-full p-3 shadow-lg transform translate-y-4 group-hover:translate-y-0 transition-transform">
+<span class="material-symbols-outlined">play_arrow</span>
+</span>
+</div>
+</div>
+<h3 class="text-slate-900 dark:text-white font-bold text-base leading-tight group-hover:text-primary transition-colors">Tron: Legacy</h3>
+<p class="text-slate-500 dark:text-slate-400 text-sm mt-1">2010 • Sci-Fi</p>
+</div>
+</div>
+</section>
+<!-- Trending TV Shows (Horizontal Scroll) -->
+<section class="mb-10 w-full overflow-hidden">
+<div class="flex items-center justify-between mb-4 px-1">
+<h2 class="text-slate-900 dark:text-white text-xl md:text-2xl font-bold">Trending TV Shows</h2>
+<a class="text-primary text-sm font-bold hover:text-primary/80" href="#">See all</a>
+</div>
+<div class="flex gap-4 overflow-x-auto pb-4 scrollbar-hide snap-x snap-mandatory">
+<!-- Show Poster 1 -->
+<div class="snap-start shrink-0 w-[160px] md:w-[200px] group cursor-pointer">
+<div class="relative aspect-[2/3] rounded-lg overflow-hidden bg-slate-800 shadow-lg mb-3">
+<div class="absolute inset-0 bg-cover bg-center transition-transform duration-500 group-hover:scale-110" data-alt="Post apocalyptic mushroom cloud landscape" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuBwQ8gPL4FP0sbd8htq_FeeKfDn0W9ktXPPtdS3V-F6ZmYOIJuFF-4YKhzFBiBlww9wwjOePaWI-oDf0oZRFZmMxj3O-mJ372NT5_sdCtu7liKqC7x1OcNF8wLpBrbN9Bjz6iRm3P0LNoMf8OPVcSYSHVBhy_h74m4vjjym5FxRPWZwtnzCnhz68BCRDQqkhXjMWrpu8uoWiApbeIxKuLbBt50XVhC8EksfucH9CvF61OF1ktgFplhFDFoKWvQ-IEEL0aGPuvkBmnfd");'></div>
+<div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2">
+<span class="bg-primary text-white rounded-full p-3 shadow-lg transform translate-y-4 group-hover:translate-y-0 transition-transform">
+<span class="material-symbols-outlined">play_arrow</span>
+</span>
+</div>
+<div class="absolute top-2 left-2 bg-primary/90 px-2 py-0.5 rounded text-xs font-bold text-white">TOP 10</div>
+</div>
+<h3 class="text-slate-900 dark:text-white font-bold text-base leading-tight group-hover:text-primary transition-colors">Fallout</h3>
+<p class="text-slate-500 dark:text-slate-400 text-sm mt-1">2024 • Action RPG</p>
+</div>
+<!-- Show Poster 2 -->
+<div class="snap-start shrink-0 w-[160px] md:w-[200px] group cursor-pointer">
+<div class="relative aspect-[2/3] rounded-lg overflow-hidden bg-slate-800 shadow-lg mb-3">
+<div class="absolute inset-0 bg-cover bg-center transition-transform duration-500 group-hover:scale-110" data-alt="Dragon scales texture dark background" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuC4C5gambqrFoRUZVn-zbhsNMwooZPCEkLCeNxeZt4JAFCcZj32x210vReRqK2yK5ZroeeHOZFlkVjeg-LOfkFHqM2AOe7u3GtF2jL06D1p0l2UFusKTy1Bvp6yeYtace7tGytmgv2osptSQuFnvUgYjETJSrqiwv2Ut1yOwd20gzVjm9bHGIoj-t3uT9UiJnkcxecq4FFiQwrHNR2g4cxUpW_zllLxhGD73_PUUMVonppp4hSqUnb1OwVS1lPCr4sKnRpZHG8n1t6t");'></div>
+<div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2">
+<span class="bg-primary text-white rounded-full p-3 shadow-lg transform translate-y-4 group-hover:translate-y-0 transition-transform">
+<span class="material-symbols-outlined">play_arrow</span>
+</span>
+</div>
+</div>
+<h3 class="text-slate-900 dark:text-white font-bold text-base leading-tight group-hover:text-primary transition-colors">House of the Dragon</h3>
+<p class="text-slate-500 dark:text-slate-400 text-sm mt-1">2022 • Fantasy</p>
+</div>
+<!-- Show Poster 3 -->
+<div class="snap-start shrink-0 w-[160px] md:w-[200px] group cursor-pointer">
+<div class="relative aspect-[2/3] rounded-lg overflow-hidden bg-slate-800 shadow-lg mb-3">
+<div class="absolute inset-0 bg-cover bg-center transition-transform duration-500 group-hover:scale-110" data-alt="Bear chef kitchen chaotic scene abstract" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuABApsE0t9N9K4j73wbgrJ3AEHIEExNGZCM-Tk-W_pLSUCDXtxGyjEG6V9HeEmk57w3X8rkjf6wQFYTES7CPfkU6szq4KZUa-1SjkAT3j7GSFrz3jjVtQPDq9HNRBBmPR2qcopwioOVkFkDDCLPyEPTwsKx4Ck8g87gTZDyOWjbtmUwZ-oZqaI70aBSiuOUrAauBNpcroKn8EEhPk8hMg-_0K6fpPoKAzsgQROiQnoshONR1p84XPPSBdVfJHHp2GYkP5c-1YNRjQzn");'></div>
+<div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2">
+<span class="bg-primary text-white rounded-full p-3 shadow-lg transform translate-y-4 group-hover:translate-y-0 transition-transform">
+<span class="material-symbols-outlined">play_arrow</span>
+</span>
+</div>
+</div>
+<h3 class="text-slate-900 dark:text-white font-bold text-base leading-tight group-hover:text-primary transition-colors">The Bear</h3>
+<p class="text-slate-500 dark:text-slate-400 text-sm mt-1">2022 • Drama</p>
+</div>
+<!-- Show Poster 4 -->
+<div class="snap-start shrink-0 w-[160px] md:w-[200px] group cursor-pointer">
+<div class="relative aspect-[2/3] rounded-lg overflow-hidden bg-slate-800 shadow-lg mb-3">
+<div class="absolute inset-0 bg-cover bg-center transition-transform duration-500 group-hover:scale-110" data-alt="Dark forest eerie atmosphere" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuDpMinkHc6aTchycU9E9wrF4NOkXahuXmLZ8tNm8BIkwG-fPV3XFS5pcNm3coqJaoMvXPA0SPTDoUuLXkQ2aWD2cWExLiYEMVdxlZzmmH-uesowgYjJh9616dZNdeRaYYKy4vHxrsTfcCOFU3KDYIE5qotO9hOMKThWMLpTLvIMNp7tD3Iij5Jn1SH1lsl43PDn9lhETKZmaYwpAR91aYHjWtb7mTKHe555ZsjgK4qSJ1_CqaGBzux-smfBDpzT3QNUuHdInJUkzMLy");'></div>
+<div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2">
+<span class="bg-primary text-white rounded-full p-3 shadow-lg transform translate-y-4 group-hover:translate-y-0 transition-transform">
+<span class="material-symbols-outlined">play_arrow</span>
+</span>
+</div>
+</div>
+<h3 class="text-slate-900 dark:text-white font-bold text-base leading-tight group-hover:text-primary transition-colors">Dark</h3>
+<p class="text-slate-500 dark:text-slate-400 text-sm mt-1">2017 • Mystery</p>
+</div>
+</div>
+</section>
+</div>
+</main>
+<!-- Footer -->
+<footer class="w-full border-t border-slate-200 dark:border-[#232f48] py-8 bg-background-light dark:bg-[#0d121c]">
+<div class="max-w-[1440px] mx-auto px-6 lg:px-10 flex flex-col md:flex-row justify-between items-center gap-4">
+<div class="flex items-center gap-2">
+<div class="relative flex h-7 w-7 items-center justify-center flex-shrink-0">
+<svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" class="w-full h-full">
+<defs>
+<linearGradient id="hss-ft-l" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#f47b25"/><stop offset="100%" stop-color="#e53935"/></linearGradient>
+<linearGradient id="hss-ft-r" x1="1" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#f47b25"/><stop offset="100%" stop-color="#e53935"/></linearGradient>
+</defs>
+<path d="M1,3 C2,1 4,1 6,1 L18,1 L12,39 C10,39 4,39 2,37 Z" fill="url(#hss-ft-l)"/>
+<path d="M23,1 L37,1 C38,1 39,2 39,3 L39,37 C38,39 36,39 34,39 L28,39 Z" fill="url(#hss-ft-r)"/>
+<polygon points="15,13 15,27 26,20" fill="rgba(255,255,255,0.92)"/>
+</svg>
+</div>
+<span class="text-sm font-bold text-slate-900 dark:text-white">Ma Player</span>
+</div>
+<p class="text-slate-500 dark:text-slate-400 text-sm">© 2024 Ma Player. No login required.</p>
+<div class="flex gap-4">
+<a class="text-slate-500 dark:text-slate-400 hover:text-primary transition-colors text-sm" href="#">Terms</a>
+<a class="text-slate-500 dark:text-slate-400 hover:text-primary transition-colors text-sm" href="#">Privacy</a>
+</div>
+</div>
+</footer>
+</body></html>

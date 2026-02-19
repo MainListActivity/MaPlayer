@@ -1,0 +1,642 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <title>TV Series Library - TV Shows</title>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+        rel="stylesheet" />
+    <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect" />
+    <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;700;900&amp;display=swap"
+        rel="stylesheet" />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+        rel="stylesheet" />
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#f47b25",
+                        "primary-dark": "#0e45b5",
+                        "background-light": "#f6f6f8",
+                        "background-dark": "#101622",
+                        "surface-dark": "#1b2333",
+                        "surface-darker": "#161c2a",
+                    },
+                    fontFamily: {
+                        "display": ["Be Vietnam Pro", "sans-serif"]
+                    },
+                    borderRadius: { "DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "2xl": "1rem", "full": "9999px" },
+                },
+            },
+        }
+    </script>
+    <style>
+        /* Custom scrollbar for webkit browsers */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #101622;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #2d3748;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #4a5568;
+        }
+    </style>
+</head>
+
+<body
+    class="bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 font-display min-h-screen overflow-hidden flex">
+    <!-- Sidebar Navigation -->
+    <aside class="w-72 bg-surface-darker border-r border-slate-800/50 flex flex-col h-screen flex-shrink-0 z-20">
+        <!-- Logo Area -->
+        <div class="p-6 flex items-center gap-3">
+            <div class="relative flex h-10 w-10 items-center justify-center flex-shrink-0">
+                <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" class="w-full h-full">
+                    <defs>
+                        <linearGradient id="tvl-lg-l" x1="0" y1="0" x2="1" y2="1">
+                            <stop offset="0%" stop-color="#f47b25" />
+                            <stop offset="100%" stop-color="#e53935" />
+                        </linearGradient>
+                        <linearGradient id="tvl-lg-r" x1="1" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stop-color="#f47b25" />
+                            <stop offset="100%" stop-color="#e53935" />
+                        </linearGradient>
+                    </defs>
+                    <path d="M1,3 C2,1 4,1 6,1 L18,1 L12,39 C10,39 4,39 2,37 Z" fill="url(#tvl-lg-l)" />
+                    <path d="M23,1 L37,1 C38,1 39,2 39,3 L39,37 C38,39 36,39 34,39 L28,39 Z" fill="url(#tvl-lg-r)" />
+                    <polygon points="15,13 15,27 26,20" fill="rgba(255,255,255,0.92)" />
+                </svg>
+            </div>
+            <div>
+                <h1 class="text-white text-lg font-bold leading-tight">Ma Player</h1>
+                <p class="text-slate-400 text-xs font-medium">Personal Collection</p>
+            </div>
+        </div>
+        <!-- Navigation Links -->
+        <div class="px-4 py-2 flex-1 overflow-y-auto">
+            <div class="flex flex-col gap-1 mb-8">
+                <p class="px-4 text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Menu</p>
+                <a class="flex items-center gap-3 px-4 py-3 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800/50 transition-colors group"
+                    href="#">
+                    <span class="material-symbols-outlined group-hover:text-primary transition-colors">home</span>
+                    <span class="font-medium">Home</span>
+                </a>
+                <a class="flex items-center gap-3 px-4 py-3 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800/50 transition-colors group"
+                    href="#">
+                    <span class="material-symbols-outlined group-hover:text-primary transition-colors">movie</span>
+                    <span class="font-medium">Movies</span>
+                </a>
+                <a class="flex items-center gap-3 px-4 py-3 rounded-lg bg-primary/10 text-primary" href="#">
+                    <span class="material-symbols-outlined fill-current">tv</span>
+                    <span class="font-bold">TV Shows</span>
+                </a>
+                <a class="flex items-center gap-3 px-4 py-3 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800/50 transition-colors group"
+                    href="#">
+                    <span class="material-symbols-outlined group-hover:text-primary transition-colors">favorite</span>
+                    <span class="font-medium">Favorites</span>
+                </a>
+                <a class="flex items-center gap-3 px-4 py-3 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800/50 transition-colors group"
+                    href="#">
+                    <span class="material-symbols-outlined group-hover:text-primary transition-colors">settings</span>
+                    <span class="font-medium">Settings</span>
+                </a>
+            </div>
+            <div class="flex flex-col gap-1">
+                <p class="px-4 text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Library Stats</p>
+                <div class="px-4 py-2">
+                    <div class="flex justify-between items-center mb-1">
+                        <span class="text-sm text-slate-300">Storage Used</span>
+                        <span class="text-xs text-primary font-bold">78%</span>
+                    </div>
+                    <div class="w-full bg-slate-800 rounded-full h-1.5">
+                        <div class="bg-primary h-1.5 rounded-full" style="width: 78%"></div>
+                    </div>
+                    <p class="text-xs text-slate-500 mt-2">1,204 Series • 45.2 TB</p>
+                </div>
+            </div>
+        </div>
+        <!-- User Profile -->
+        <div class="p-4 border-t border-slate-800/50">
+            <div class="flex items-center gap-3 px-2">
+                <div class="w-10 h-10 rounded-full bg-slate-700 overflow-hidden relative">
+                    <img alt="User Avatar" class="w-full h-full object-cover"
+                        src="https://lh3.googleusercontent.com/aida-public/AB6AXuB0ngGpjVM03p2tcrvnKeeMC3MRFCz3wulREQzlIebZSGPfDn2wImZX4sE6A5I5mwEk9owZrqTKdyroT5zPJMfphDoTgIa-lZbonA_2iz41Gnf_4SC-sdM27cX7QrZit9KDzL9ECK-TiLl6x7tYCEtaxHGzlIlfH1MJ4ahV4LEjp5KYit-WY4Wo27CobF8W3YtFrjH_zP1jaTkmEHSON9HcOfD-V3j8BGRduil4xt-Pag2td8U69GRwh-9sQcWsEC5KsaDAhqwRWaz6" />
+                </div>
+                <div class="flex flex-col">
+                    <span class="text-sm font-bold text-white">Alex Doe</span>
+                    <span class="text-xs text-slate-400">Premium Member</span>
+                </div>
+                <button class="ml-auto text-slate-400 hover:text-white">
+                    <span class="material-symbols-outlined">logout</span>
+                </button>
+            </div>
+        </div>
+    </aside>
+    <!-- Main Content -->
+    <main class="flex-1 flex flex-col h-screen overflow-hidden relative">
+        <!-- Top Header & Search -->
+        <header
+            class="h-20 bg-background-dark/80 backdrop-blur-md border-b border-slate-800/50 flex items-center justify-between px-8 z-10 sticky top-0 shrink-0">
+            <!-- Breadcrumbs -->
+            <div class="flex items-center gap-2 text-sm">
+                <a class="text-slate-400 hover:text-white transition-colors" href="#">Home</a>
+                <span class="text-slate-600">/</span>
+                <span class="text-white font-medium">TV Shows</span>
+            </div>
+            <!-- Search Bar -->
+            <div class="flex-1 max-w-xl mx-8">
+                <div class="relative group">
+                    <div
+                        class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500 group-focus-within:text-primary transition-colors">
+                        <span class="material-symbols-outlined">search</span>
+                    </div>
+                    <input
+                        class="block w-full pl-10 pr-3 py-2.5 border-none rounded-lg leading-5 bg-surface-dark text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-primary focus:bg-surface-darker sm:text-sm transition-all"
+                        placeholder="Search series, episodes, genres..." type="text" />
+                    <div class="absolute inset-y-0 right-0 pr-3 flex items-center">
+                        <span class="text-slate-600 text-xs border border-slate-700 rounded px-1.5 py-0.5">⌘K</span>
+                    </div>
+                </div>
+            </div>
+            <!-- Actions -->
+            <div class="flex items-center gap-4">
+                <button
+                    class="flex items-center justify-center w-10 h-10 rounded-full bg-surface-dark text-slate-400 hover:text-white hover:bg-slate-700 transition-colors relative">
+                    <span class="material-symbols-outlined">notifications</span>
+                    <span
+                        class="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border border-surface-dark"></span>
+                </button>
+                <button
+                    class="bg-primary hover:bg-primary-dark text-white px-5 py-2.5 rounded-lg text-sm font-bold transition-all shadow-lg shadow-primary/20 flex items-center gap-2">
+                    <span class="material-symbols-outlined text-[20px]">shuffle</span>
+                    Random Pick
+                </button>
+            </div>
+        </header>
+        <!-- Content Area with Scroll -->
+        <div class="flex-1 overflow-y-auto p-8 scroll-smooth">
+            <!-- Hero / Featured Section (Compact) -->
+            <div
+                class="mb-10 relative rounded-2xl overflow-hidden min-h-[320px] bg-gradient-to-r from-background-dark via-surface-dark to-slate-900 border border-slate-800">
+                <div class="absolute inset-0 z-0">
+                    <img class="w-full h-full object-cover opacity-40 mix-blend-overlay"
+                        data-alt="Abstract dark cinematic scene with blue and red neon lighting"
+                        src="https://lh3.googleusercontent.com/aida-public/AB6AXuCYxkYA2IEgOKTr-IjQE1_uFpdey7Pzi_2GtUyJuEdgpSJsfdD7FbkG_KwqbVUvgf7uMJzOqoDRXxBnSXo1bbEZIQPzc30PQbXBM9BopG8ZSlqumV1wfIFeq-RdHiL5uBAv-zB05DFnApxWsqda7Rj0o87-We1s8ACNFRsVtzgrhmUlbVmdzIrvgDwwj1LIbobbnxRqUr7_TOxmxKMBLAN-jtilqc0A-LSfk5IG6Y1U-5PsHbsm_akr1Ja8FYKvbsiLbZsl3_xn69eg" />
+                    <div
+                        class="absolute inset-0 bg-gradient-to-t from-background-dark via-background-dark/60 to-transparent">
+                    </div>
+                    <div
+                        class="absolute inset-0 bg-gradient-to-r from-background-dark via-background-dark/80 to-transparent">
+                    </div>
+                </div>
+                <div class="relative z-10 flex flex-col justify-end h-full p-10 max-w-3xl">
+                    <span
+                        class="inline-block px-3 py-1 rounded-full bg-primary/20 text-primary text-xs font-bold mb-4 w-fit border border-primary/20">Trending
+                        Now</span>
+                    <h2 class="text-4xl md:text-5xl font-bold text-white mb-4 leading-tight">Stranger Things</h2>
+                    <div class="flex items-center gap-4 text-sm text-slate-300 mb-6">
+                        <span class="text-green-400 font-bold">98% Match</span>
+                        <span>2016 - Present</span>
+                        <span class="px-2 py-0.5 border border-slate-600 rounded text-xs">TV-14</span>
+                        <span>4 Seasons</span>
+                        <span>Sci-Fi, Horror</span>
+                    </div>
+                    <p class="text-slate-300 text-base leading-relaxed mb-8 line-clamp-2 max-w-xl">
+                        When a young boy vanishes, a small town uncovers a mystery involving secret experiments,
+                        terrifying supernatural forces, and one strange little girl.
+                    </p>
+                    <div class="flex gap-3">
+                        <button
+                            class="bg-white text-black px-6 py-3 rounded-lg font-bold hover:bg-slate-200 transition-colors flex items-center gap-2">
+                            <span class="material-symbols-outlined fill text-black">play_arrow</span>
+                            Continue Watching S4:E2
+                        </button>
+                        <button
+                            class="bg-slate-800/80 backdrop-blur text-white px-6 py-3 rounded-lg font-medium hover:bg-slate-700 transition-colors flex items-center gap-2">
+                            <span class="material-symbols-outlined">info</span>
+                            More Info
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <!-- Filters & Sorting -->
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
+                <div class="flex flex-wrap items-center gap-2">
+                    <button
+                        class="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium transition-colors shadow-lg shadow-primary/10">All
+                        Shows</button>
+                    <button
+                        class="px-4 py-2 bg-surface-dark text-slate-400 hover:text-white hover:bg-slate-700 rounded-lg text-sm font-medium transition-colors border border-transparent hover:border-slate-600">Recently
+                        Added</button>
+                    <button
+                        class="px-4 py-2 bg-surface-dark text-slate-400 hover:text-white hover:bg-slate-700 rounded-lg text-sm font-medium transition-colors border border-transparent hover:border-slate-600">Continuing</button>
+                    <button
+                        class="px-4 py-2 bg-surface-dark text-slate-400 hover:text-white hover:bg-slate-700 rounded-lg text-sm font-medium transition-colors border border-transparent hover:border-slate-600">Ended</button>
+                </div>
+                <div class="flex items-center gap-3">
+                    <span class="text-slate-500 text-sm">Sort by:</span>
+                    <div class="relative">
+                        <button
+                            class="flex items-center gap-2 text-slate-200 text-sm font-medium bg-surface-dark px-3 py-2 rounded-lg hover:bg-slate-700 transition-colors">
+                            Popularity
+                            <span class="material-symbols-outlined text-base">expand_more</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <!-- Series Grid -->
+            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
+                <!-- Card 1 -->
+                <div class="group relative flex flex-col gap-2 cursor-pointer">
+                    <div
+                        class="aspect-[2/3] rounded-xl overflow-hidden relative shadow-lg bg-slate-800 ring-1 ring-slate-800">
+                        <img class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                            data-alt="Dark moody movie poster background"
+                            src="https://lh3.googleusercontent.com/aida-public/AB6AXuC3qyGmGUUZhcX63u9aRE6C-0PhG3KXgCjOBzG9Ze-sYzRbiPY1YZ64Snjd7l1u4dPR53xgQX4siWfV_nQTUs7ja8NToLnXwgTyFW9G7EyTgN7qrmxnb62UzSsryg0Gws-CD_epM31AtmkgNg9bvMPqm5vQhziuZhZ_92skOwd9AQ12VvZZ8sSWyM_lud6SBKjadRqnHTQJa_02XhZF2pmfer8DA7hti5h89CvhXmAmk5KZw747OaAnb7_mhuGnum6Y_-vxwZ_FRXSu" />
+                        <div
+                            class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center backdrop-blur-[2px]">
+                            <button
+                                class="w-12 h-12 bg-primary rounded-full flex items-center justify-center text-white shadow-xl transform scale-50 group-hover:scale-100 transition-transform duration-300">
+                                <span class="material-symbols-outlined fill text-2xl">play_arrow</span>
+                            </button>
+                        </div>
+                        <div
+                            class="absolute top-2 right-2 bg-black/60 backdrop-blur-md px-1.5 py-0.5 rounded text-xs font-bold text-yellow-400 flex items-center gap-1">
+                            <span class="material-symbols-outlined text-[12px] fill">star</span> 8.9
+                        </div>
+                        <div
+                            class="absolute top-2 left-2 bg-primary/90 backdrop-blur-md px-1.5 py-0.5 rounded text-[10px] font-bold text-white uppercase tracking-wide">
+                            New Ep
+                        </div>
+                    </div>
+                    <div class="flex flex-col gap-1 px-1">
+                        <h3
+                            class="text-slate-100 font-bold text-base truncate group-hover:text-primary transition-colors">
+                            Dark</h3>
+                        <div class="flex items-center justify-between text-xs text-slate-500">
+                            <span>2017 • 3 Seasons</span>
+                            <span class="border border-slate-700 px-1 rounded text-[10px]">TV-MA</span>
+                        </div>
+                    </div>
+                </div>
+                <!-- Card 2 -->
+                <div class="group relative flex flex-col gap-2 cursor-pointer">
+                    <div
+                        class="aspect-[2/3] rounded-xl overflow-hidden relative shadow-lg bg-slate-800 ring-1 ring-slate-800">
+                        <img class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                            data-alt="Cyberpunk futuristic city poster background"
+                            src="https://lh3.googleusercontent.com/aida-public/AB6AXuAcjN-0Iq4fwO6MyuML9mg6VKL6qRaJzHqVKNKf-Xjn1eAZ8TW_9nckha1_hrB4qZ6LWnZK8o-jAnT84hfTC1pomsxIgpWrrt79oFb42haSzlT8e8-oWvDn4mhEBLQk0KZEwhFn3N3smPARjFkmgToJM-OsdNvfqlG2vneDPZNvetVK6gtO4r1hUaeFqgIQ5ZUtlsIF0cOerrvGD7T71o47o7huONAwq2yveR5wpKvdTdBV5QdhYDv2gRVYz5APFIkUDKvDKXxwZJq6" />
+                        <div
+                            class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center backdrop-blur-[2px]">
+                            <button
+                                class="w-12 h-12 bg-primary rounded-full flex items-center justify-center text-white shadow-xl transform scale-50 group-hover:scale-100 transition-transform duration-300">
+                                <span class="material-symbols-outlined fill text-2xl">play_arrow</span>
+                            </button>
+                        </div>
+                        <div
+                            class="absolute top-2 right-2 bg-black/60 backdrop-blur-md px-1.5 py-0.5 rounded text-xs font-bold text-yellow-400 flex items-center gap-1">
+                            <span class="material-symbols-outlined text-[12px] fill">star</span> 9.2
+                        </div>
+                    </div>
+                    <div class="flex flex-col gap-1 px-1">
+                        <h3
+                            class="text-slate-100 font-bold text-base truncate group-hover:text-primary transition-colors">
+                            Cyber Edgerunners</h3>
+                        <div class="flex items-center justify-between text-xs text-slate-500">
+                            <span>2022 • 10 Eps</span>
+                            <span class="border border-slate-700 px-1 rounded text-[10px]">TV-MA</span>
+                        </div>
+                    </div>
+                </div>
+                <!-- Card 3 -->
+                <div class="group relative flex flex-col gap-2 cursor-pointer">
+                    <div
+                        class="aspect-[2/3] rounded-xl overflow-hidden relative shadow-lg bg-slate-800 ring-1 ring-slate-800">
+                        <img class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                            data-alt="Minimalist landscape poster background"
+                            src="https://lh3.googleusercontent.com/aida-public/AB6AXuBPDmqdiufWPnBPSwtpkCPMnLVOJ9AvdzETx7DFQR07B0DsNqlpRNocqwAlguAt1Ja7FpxMQImuzKo1vdnicPeP0XTlh26PajNrACKJNMMClNJxJc6m5a6DatcP13ojgw8b67HbnVwBAbPrr4TQNvRZNU0OE5bFW9Q69tLk5Hk8IxJ0QZdyXxAqv2atVDxAOBgR91b8zyeNkPExoif4FDA8pMn8Nj1cIioL6b1BQlpUbKwFq5O4dAyRmEte0reLRqVfFaSKRMQJjF9i" />
+                        <div
+                            class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center backdrop-blur-[2px]">
+                            <button
+                                class="w-12 h-12 bg-primary rounded-full flex items-center justify-center text-white shadow-xl transform scale-50 group-hover:scale-100 transition-transform duration-300">
+                                <span class="material-symbols-outlined fill text-2xl">play_arrow</span>
+                            </button>
+                        </div>
+                        <div
+                            class="absolute top-2 right-2 bg-black/60 backdrop-blur-md px-1.5 py-0.5 rounded text-xs font-bold text-yellow-400 flex items-center gap-1">
+                            <span class="material-symbols-outlined text-[12px] fill">star</span> 8.1
+                        </div>
+                    </div>
+                    <div class="flex flex-col gap-1 px-1">
+                        <h3
+                            class="text-slate-100 font-bold text-base truncate group-hover:text-primary transition-colors">
+                            Yellowstone</h3>
+                        <div class="flex items-center justify-between text-xs text-slate-500">
+                            <span>2018 • 5 Seasons</span>
+                            <span class="border border-slate-700 px-1 rounded text-[10px]">TV-MA</span>
+                        </div>
+                    </div>
+                </div>
+                <!-- Card 4 -->
+                <div class="group relative flex flex-col gap-2 cursor-pointer">
+                    <div
+                        class="aspect-[2/3] rounded-xl overflow-hidden relative shadow-lg bg-slate-800 ring-1 ring-slate-800">
+                        <img class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                            data-alt="Abstract geometric colorful background"
+                            src="https://lh3.googleusercontent.com/aida-public/AB6AXuAj0U_OnOhW1jt7GcCQ7mn41oEoklUKKXslTTOOGl5uDZpe4AE1vfuFNKJiZqR5ucJp_6p1PiIvh8Pw-Ra3PMGnwoVflAK8i533KZY8AnFSPQzqu1p9OKbhSO4x_Nq7FliW40-HYOqzH6Vos9Ln-z7OxgK6bXp4Ah2TTsKS7w6h-eTyfz6gsITtmtjIYGMu2ZTFqpv7N9vxR74zNkeoDAjjZ5uqnoQWRQbn2tud5eWgiklsmboh3h1bfktpb70_JCwoc6d56tAgjBrX" />
+                        <div
+                            class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center backdrop-blur-[2px]">
+                            <button
+                                class="w-12 h-12 bg-primary rounded-full flex items-center justify-center text-white shadow-xl transform scale-50 group-hover:scale-100 transition-transform duration-300">
+                                <span class="material-symbols-outlined fill text-2xl">play_arrow</span>
+                            </button>
+                        </div>
+                        <div
+                            class="absolute top-2 right-2 bg-black/60 backdrop-blur-md px-1.5 py-0.5 rounded text-xs font-bold text-slate-300 flex items-center gap-1">
+                            <span class="material-symbols-outlined text-[12px]">star</span> 7.5
+                        </div>
+                    </div>
+                    <div class="flex flex-col gap-1 px-1">
+                        <h3
+                            class="text-slate-100 font-bold text-base truncate group-hover:text-primary transition-colors">
+                            Severance</h3>
+                        <div class="flex items-center justify-between text-xs text-slate-500">
+                            <span>2022 • 9 Eps</span>
+                            <span class="border border-slate-700 px-1 rounded text-[10px]">TV-14</span>
+                        </div>
+                    </div>
+                </div>
+                <!-- Card 5 -->
+                <div class="group relative flex flex-col gap-2 cursor-pointer">
+                    <div
+                        class="aspect-[2/3] rounded-xl overflow-hidden relative shadow-lg bg-slate-800 ring-1 ring-slate-800">
+                        <img class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                            data-alt="Starry night sky background"
+                            src="https://lh3.googleusercontent.com/aida-public/AB6AXuBm-y5PXVIvUbOt24Q1V9fTjwws1PCd11TCGW9KHEFI8dFD_v3tDcAAlu0QcWGO9F1OLT-m3IJLBZk22l6pERP6OwmjGL5vHSQm_vNFuudfusYVZUdikoO3KUdAVnA6sGOzU1JC7yRk782hXeCjEjQR2h2XO2UvKeGCKlEdnVnGUGsQ2z8ULifPy4mahLWo9CgFEGQUkJw_yQywY8jw9J8HKybZkKJMPYV7wx9wHzaYzX-mgktEQ3o-2FaMvsZUO0HsMaSRI-EG5eFt" />
+                        <div
+                            class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center backdrop-blur-[2px]">
+                            <button
+                                class="w-12 h-12 bg-primary rounded-full flex items-center justify-center text-white shadow-xl transform scale-50 group-hover:scale-100 transition-transform duration-300">
+                                <span class="material-symbols-outlined fill text-2xl">play_arrow</span>
+                            </button>
+                        </div>
+                        <div
+                            class="absolute top-2 right-2 bg-black/60 backdrop-blur-md px-1.5 py-0.5 rounded text-xs font-bold text-yellow-400 flex items-center gap-1">
+                            <span class="material-symbols-outlined text-[12px] fill">star</span> 9.5
+                        </div>
+                        <!-- Progress Bar for watched show -->
+                        <div class="absolute bottom-0 left-0 right-0 h-1 bg-slate-700">
+                            <div class="h-full bg-primary w-3/4"></div>
+                        </div>
+                    </div>
+                    <div class="flex flex-col gap-1 px-1">
+                        <h3
+                            class="text-slate-100 font-bold text-base truncate group-hover:text-primary transition-colors">
+                            The Expanse</h3>
+                        <div class="flex items-center justify-between text-xs text-slate-500">
+                            <span>2015 • 6 Seasons</span>
+                            <span class="border border-slate-700 px-1 rounded text-[10px]">TV-14</span>
+                        </div>
+                    </div>
+                </div>
+                <!-- Card 6 -->
+                <div class="group relative flex flex-col gap-2 cursor-pointer">
+                    <div
+                        class="aspect-[2/3] rounded-xl overflow-hidden relative shadow-lg bg-slate-800 ring-1 ring-slate-800">
+                        <img class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                            data-alt="Foggy forest background"
+                            src="https://lh3.googleusercontent.com/aida-public/AB6AXuBZsEZ3vq6RQAMzTrfALq3b-TLKPQ11W_m6dxrLgoaUcmYJIpfXiOiart2FPVf-vMq4mIhKnvwrUcKpTJ5lkJMkWZlld18a2UrZ0RZtHPvVoXdQgVK6_1apRvtf_GjMmsWkWAd1DnzGCSPQ_WQAZIBDjdpl_gRVPL7fIjujXgwnS9ta0y17NAzqoRrdFPKYhrQBzGzGk5jGfkkUQB6Jgk6fkHm81t1HDAm8CE_roUGffx4jaNXOu1rwkLY6O9UiOAT95NhqJKDMQDNv" />
+                        <div
+                            class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center backdrop-blur-[2px]">
+                            <button
+                                class="w-12 h-12 bg-primary rounded-full flex items-center justify-center text-white shadow-xl transform scale-50 group-hover:scale-100 transition-transform duration-300">
+                                <span class="material-symbols-outlined fill text-2xl">play_arrow</span>
+                            </button>
+                        </div>
+                        <div
+                            class="absolute top-2 right-2 bg-black/60 backdrop-blur-md px-1.5 py-0.5 rounded text-xs font-bold text-yellow-400 flex items-center gap-1">
+                            <span class="material-symbols-outlined text-[12px] fill">star</span> 8.8
+                        </div>
+                    </div>
+                    <div class="flex flex-col gap-1 px-1">
+                        <h3
+                            class="text-slate-100 font-bold text-base truncate group-hover:text-primary transition-colors">
+                            Vikings</h3>
+                        <div class="flex items-center justify-between text-xs text-slate-500">
+                            <span>2013 • 6 Seasons</span>
+                            <span class="border border-slate-700 px-1 rounded text-[10px]">TV-MA</span>
+                        </div>
+                    </div>
+                </div>
+                <!-- Card 7 -->
+                <div class="group relative flex flex-col gap-2 cursor-pointer">
+                    <div
+                        class="aspect-[2/3] rounded-xl overflow-hidden relative shadow-lg bg-slate-800 ring-1 ring-slate-800">
+                        <img class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                            data-alt="Red abstract texture background"
+                            src="https://lh3.googleusercontent.com/aida-public/AB6AXuBHODuABbFGE5dUOY9nHaKs0WLZx2n0Ni94uyMTALwYyHHWf3es_DIqCIdNFRkbzvhLq8s2at57wXFqE6VS_6vtGatQiduYB9cdpFNcVvtp7fp9MYYnK4yOHfUMDWMEeI4GkiUslUKdWzamXkoo0J2RYVg1VFAriMd_Kz9-XmDe8AGAoeTG_LDUzB5bCH0ktPbi6bfC0q1MKN1gvFN2B1mB-h32rYDRzWk000GuDX75CXXNfdtN4dAsjoCwPmKjFtu8o5fu3SHfcpmS" />
+                        <div
+                            class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center backdrop-blur-[2px]">
+                            <button
+                                class="w-12 h-12 bg-primary rounded-full flex items-center justify-center text-white shadow-xl transform scale-50 group-hover:scale-100 transition-transform duration-300">
+                                <span class="material-symbols-outlined fill text-2xl">play_arrow</span>
+                            </button>
+                        </div>
+                        <div
+                            class="absolute top-2 right-2 bg-black/60 backdrop-blur-md px-1.5 py-0.5 rounded text-xs font-bold text-slate-300 flex items-center gap-1">
+                            <span class="material-symbols-outlined text-[12px]">star</span> 7.9
+                        </div>
+                    </div>
+                    <div class="flex flex-col gap-1 px-1">
+                        <h3
+                            class="text-slate-100 font-bold text-base truncate group-hover:text-primary transition-colors">
+                            Money Heist</h3>
+                        <div class="flex items-center justify-between text-xs text-slate-500">
+                            <span>2017 • 5 Parts</span>
+                            <span class="border border-slate-700 px-1 rounded text-[10px]">TV-MA</span>
+                        </div>
+                    </div>
+                </div>
+                <!-- Card 8 -->
+                <div class="group relative flex flex-col gap-2 cursor-pointer">
+                    <div
+                        class="aspect-[2/3] rounded-xl overflow-hidden relative shadow-lg bg-slate-800 ring-1 ring-slate-800">
+                        <img class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                            data-alt="Colorful abstract paint background"
+                            src="https://lh3.googleusercontent.com/aida-public/AB6AXuBRlIw8toCmGep7oKCjayv38WxROe5hQEJZ6IAdFGxSMfeuwUpNRejGlqkA-Zj-i6jP-S8Le6jXKHt7FxTyHyCOG66zlmk8qL7fD0IUa8soUYmFayjNxeVDmWPHWXNC3egk8j9JuQ4XHn956OGgBUVsxQibKlez3xEqZ_Yco3TMY-aJLASrlp_zuqBzq9CDKjRwIFNmQ02f3456_sznaMu1LDKAKpvthDwEYcD0CFSLp2dzulkuI--hkEa4gARAkm7ik5sMTtZ-WoZ4" />
+                        <div
+                            class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center backdrop-blur-[2px]">
+                            <button
+                                class="w-12 h-12 bg-primary rounded-full flex items-center justify-center text-white shadow-xl transform scale-50 group-hover:scale-100 transition-transform duration-300">
+                                <span class="material-symbols-outlined fill text-2xl">play_arrow</span>
+                            </button>
+                        </div>
+                        <div
+                            class="absolute top-2 right-2 bg-black/60 backdrop-blur-md px-1.5 py-0.5 rounded text-xs font-bold text-yellow-400 flex items-center gap-1">
+                            <span class="material-symbols-outlined text-[12px] fill">star</span> 8.4
+                        </div>
+                    </div>
+                    <div class="flex flex-col gap-1 px-1">
+                        <h3
+                            class="text-slate-100 font-bold text-base truncate group-hover:text-primary transition-colors">
+                            Euphoria</h3>
+                        <div class="flex items-center justify-between text-xs text-slate-500">
+                            <span>2019 • 2 Seasons</span>
+                            <span class="border border-slate-700 px-1 rounded text-[10px]">TV-MA</span>
+                        </div>
+                    </div>
+                </div>
+                <!-- Card 9 -->
+                <div class="group relative flex flex-col gap-2 cursor-pointer">
+                    <div
+                        class="aspect-[2/3] rounded-xl overflow-hidden relative shadow-lg bg-slate-800 ring-1 ring-slate-800">
+                        <img class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                            data-alt="Dark watercolor texture background"
+                            src="https://lh3.googleusercontent.com/aida-public/AB6AXuBIKZq3AmpXbxzEdI7djSLyOHLWLU1yae3lz5S4o7R9U3sMKeyJBJ4JT2wPr_NuScSs5h_MicKoz18hAf0p1OAOTsSjXwrVmRIn2fsaqcEJ8dX1pf2N5-HRAOcgK9ZYLBsvqjZCcVjJAy3eRCnD2McgHYuVceH4VqiZW_UiBBZ-mfLt3OwJiqc-MwX8fQKHImKKTIT_-byWikn3nltLNnnA9Gd8Z0H3RUf_m125uu5N7uc8CoO6AM8Ew-ytp4SepcEmmLFX9JpfcKQa" />
+                        <div
+                            class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center backdrop-blur-[2px]">
+                            <button
+                                class="w-12 h-12 bg-primary rounded-full flex items-center justify-center text-white shadow-xl transform scale-50 group-hover:scale-100 transition-transform duration-300">
+                                <span class="material-symbols-outlined fill text-2xl">play_arrow</span>
+                            </button>
+                        </div>
+                        <div
+                            class="absolute top-2 right-2 bg-black/60 backdrop-blur-md px-1.5 py-0.5 rounded text-xs font-bold text-yellow-400 flex items-center gap-1">
+                            <span class="material-symbols-outlined text-[12px] fill">star</span> 8.7
+                        </div>
+                    </div>
+                    <div class="flex flex-col gap-1 px-1">
+                        <h3
+                            class="text-slate-100 font-bold text-base truncate group-hover:text-primary transition-colors">
+                            The Crown</h3>
+                        <div class="flex items-center justify-between text-xs text-slate-500">
+                            <span>2016 • 6 Seasons</span>
+                            <span class="border border-slate-700 px-1 rounded text-[10px]">TV-14</span>
+                        </div>
+                    </div>
+                </div>
+                <!-- Card 10 -->
+                <div class="group relative flex flex-col gap-2 cursor-pointer">
+                    <div
+                        class="aspect-[2/3] rounded-xl overflow-hidden relative shadow-lg bg-slate-800 ring-1 ring-slate-800">
+                        <img class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                            data-alt="Space galaxy background"
+                            src="https://lh3.googleusercontent.com/aida-public/AB6AXuBYbCjXACJoPlcEMTXf9nthWUzD4Dr556BexeY5dbM_aw4O6Df4rp-rqS0m29nZfW8JeFSg3U42sxpXLxGslWeRoMXIw22C3r8caFDk-tFmOvds5rvKFpzmewzkh_a0EHEEzRMgsG4b3NPp6_eAPfvsJJRJzpWQRvAJPSmkrawxjmlMnRnxslOJxBzDOwRMehDBkrVwwLM1oBmJ1Li68hnuobJUGjGPdDJ4IfiuZmOo-d5c_hd4ouROCttHQcAiGdCXB1EOHPh3J-vc" />
+                        <div
+                            class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center backdrop-blur-[2px]">
+                            <button
+                                class="w-12 h-12 bg-primary rounded-full flex items-center justify-center text-white shadow-xl transform scale-50 group-hover:scale-100 transition-transform duration-300">
+                                <span class="material-symbols-outlined fill text-2xl">play_arrow</span>
+                            </button>
+                        </div>
+                        <div
+                            class="absolute top-2 right-2 bg-black/60 backdrop-blur-md px-1.5 py-0.5 rounded text-xs font-bold text-yellow-400 flex items-center gap-1">
+                            <span class="material-symbols-outlined text-[12px] fill">star</span> 9.0
+                        </div>
+                    </div>
+                    <div class="flex flex-col gap-1 px-1">
+                        <h3
+                            class="text-slate-100 font-bold text-base truncate group-hover:text-primary transition-colors">
+                            Mandalorian</h3>
+                        <div class="flex items-center justify-between text-xs text-slate-500">
+                            <span>2019 • 3 Seasons</span>
+                            <span class="border border-slate-700 px-1 rounded text-[10px]">TV-14</span>
+                        </div>
+                    </div>
+                </div>
+                <!-- Card 11 -->
+                <div class="group relative flex flex-col gap-2 cursor-pointer">
+                    <div
+                        class="aspect-[2/3] rounded-xl overflow-hidden relative shadow-lg bg-slate-800 ring-1 ring-slate-800">
+                        <img class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                            data-alt="Abstract liquid blue background"
+                            src="https://lh3.googleusercontent.com/aida-public/AB6AXuAoJHBzMyXT5DQWxVYUYuUQr05Zw5TbwFAhytPtJQMsLcDe7t0RWwNwc-8qIk34aCPOqW2Q_nPvYpYxGp5-Kd8R3fXmkJ-ibdQhZXIAOK_l28R7AcjCfnc5ghQyOXUd8LeOwTdvB5_6-LAGDOl3soCoHGuujzUs40YfSBACMRmx-XMZ6UFugYdLdb-D-fWwPIA7XIbkyWAWEcPd48YZtbGENdRL8vQE1zhS_mJVEgVDPY88eVobImo9EeBWMDLfd8c4ViOvvS-Q7vC3" />
+                        <div
+                            class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center backdrop-blur-[2px]">
+                            <button
+                                class="w-12 h-12 bg-primary rounded-full flex items-center justify-center text-white shadow-xl transform scale-50 group-hover:scale-100 transition-transform duration-300">
+                                <span class="material-symbols-outlined fill text-2xl">play_arrow</span>
+                            </button>
+                        </div>
+                        <div
+                            class="absolute top-2 right-2 bg-black/60 backdrop-blur-md px-1.5 py-0.5 rounded text-xs font-bold text-yellow-400 flex items-center gap-1">
+                            <span class="material-symbols-outlined text-[12px] fill">star</span> 8.6
+                        </div>
+                    </div>
+                    <div class="flex flex-col gap-1 px-1">
+                        <h3
+                            class="text-slate-100 font-bold text-base truncate group-hover:text-primary transition-colors">
+                            Ozark</h3>
+                        <div class="flex items-center justify-between text-xs text-slate-500">
+                            <span>2017 • 4 Seasons</span>
+                            <span class="border border-slate-700 px-1 rounded text-[10px]">TV-MA</span>
+                        </div>
+                    </div>
+                </div>
+                <!-- Card 12 -->
+                <div class="group relative flex flex-col gap-2 cursor-pointer">
+                    <div
+                        class="aspect-[2/3] rounded-xl overflow-hidden relative shadow-lg bg-slate-800 ring-1 ring-slate-800">
+                        <img class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                            data-alt="Neon cityscape background"
+                            src="https://lh3.googleusercontent.com/aida-public/AB6AXuDDVNgRKrbnXsfFpM1V4SACI5F4850PCN42IQEu2Ubi-mc9uNLa4pXjl8Bio0IgeJK9WoSkUuRMERWjbas0J9_WT0XbHaz2q6BO3q_f-ybYx_q1WlClsOXE_A2ZYDOlVuzxHJLFkgnXeD0IdFkedHAtailyaWFZ_Vg-B8YtQ_sZfHAL8q5FkVZ-jyS6vAo6SpO-bA59kXdx0tqzQfJIoFM_Fxr5B95QomfioOostBhIVZVXKrxhNGUCGTPHC-CVI8vLNu9LijCbCf34" />
+                        <div
+                            class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center backdrop-blur-[2px]">
+                            <button
+                                class="w-12 h-12 bg-primary rounded-full flex items-center justify-center text-white shadow-xl transform scale-50 group-hover:scale-100 transition-transform duration-300">
+                                <span class="material-symbols-outlined fill text-2xl">play_arrow</span>
+                            </button>
+                        </div>
+                        <div
+                            class="absolute top-2 right-2 bg-black/60 backdrop-blur-md px-1.5 py-0.5 rounded text-xs font-bold text-yellow-400 flex items-center gap-1">
+                            <span class="material-symbols-outlined text-[12px] fill">star</span> 9.1
+                        </div>
+                    </div>
+                    <div class="flex flex-col gap-1 px-1">
+                        <h3
+                            class="text-slate-100 font-bold text-base truncate group-hover:text-primary transition-colors">
+                            Succession</h3>
+                        <div class="flex items-center justify-between text-xs text-slate-500">
+                            <span>2018 • 4 Seasons</span>
+                            <span class="border border-slate-700 px-1 rounded text-[10px]">TV-MA</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Pagination Loader -->
+            <div class="py-12 flex justify-center">
+                <button class="flex items-center gap-2 text-slate-400 hover:text-white transition-colors">
+                    <span class="material-symbols-outlined animate-spin">refresh</span>
+                    <span>Loading more shows...</span>
+                </button>
+            </div>
+            <!-- Footer -->
+            <footer
+                class="mt-8 pt-8 border-t border-slate-800/50 flex flex-col sm:flex-row justify-between items-center text-xs text-slate-500 pb-4">
+                <p>© 2024 Ma Player. All rights reserved.</p>
+                <div class="flex gap-4 mt-4 sm:mt-0">
+                    <a class="hover:text-slate-300" href="#">Privacy Policy</a>
+                    <a class="hover:text-slate-300" href="#">Terms of Service</a>
+                    <a class="hover:text-slate-300" href="#">Help Center</a>
+                </div>
+            </footer>
+        </div>
+    </main>
+</body>
+
+</html>
