@@ -32,18 +32,6 @@ class AppRoutes {
       icon: Icons.home_outlined,
     ),
     AppMenuItem(
-      route: AppRoute.movies,
-      path: movies,
-      label: 'Movies',
-      icon: Icons.movie_outlined,
-    ),
-    AppMenuItem(
-      route: AppRoute.tvShows,
-      path: tvShows,
-      label: 'TV Shows',
-      icon: Icons.live_tv_outlined,
-    ),
-    AppMenuItem(
       route: AppRoute.settings,
       path: settings,
       label: 'Settings',

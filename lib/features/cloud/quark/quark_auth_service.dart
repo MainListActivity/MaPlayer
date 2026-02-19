@@ -21,7 +21,9 @@ class QuarkAuthService {
     final json = await _credentialStore.readJson(CredentialStore.quarkAuthKey);
     if (json == null) return null;
     final state = QuarkAuthState.fromJson(json);
-    if (state.accessToken.isEmpty || state.refreshToken.isEmpty) {
+    final hasTokenPair = state.accessToken.isNotEmpty && state.refreshToken.isNotEmpty;
+    final hasCookie = state.cookie != null && state.cookie!.isNotEmpty;
+    if (!hasTokenPair && !hasCookie) {
       return null;
     }
     return state;
@@ -29,6 +31,40 @@ class QuarkAuthService {
 
   Future<void> clearAuthState() {
     return _credentialStore.delete(CredentialStore.quarkAuthKey);
+  }
+
+  Future<QuarkAuthState?> syncAuthStateFromCookies(String cookieHeader) async {
+    if (cookieHeader.trim().isEmpty) return null;
+    final isLoggedIn = await probeLoginByCookie(cookieHeader);
+    if (!isLoggedIn) return null;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final state = QuarkAuthState(
+      accessToken: '',
+      refreshToken: '',
+      expiresAtEpochMs: now + const Duration(days: 30).inMilliseconds,
+      cookie: cookieHeader,
+    );
+    await _credentialStore.writeJson(CredentialStore.quarkAuthKey, state.toJson());
+    return state;
+  }
+
+  Future<bool> probeLoginByCookie(String cookieHeader) async {
+    final uri = _baseUri.resolve('user/info');
+    final response = await _http.get(
+      uri,
+      headers: <String, String>{'Cookie': cookieHeader},
+    );
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      return false;
+    }
+    final body = jsonDecode(response.body);
+    if (body is Map<String, dynamic>) {
+      final success = body['success'];
+      if (success is bool) return success;
+      final code = body['code'];
+      if (code is num) return code.toInt() == 0;
+    }
+    return true;
   }
 
   Future<QuarkQrSession> createQrSession() async {
@@ -101,6 +137,9 @@ class QuarkAuthService {
     final state = await currentAuthState();
     if (state == null) {
       throw QuarkException('Quark login required', code: 'AUTH_REQUIRED');
+    }
+    if (state.cookie != null && state.cookie!.isNotEmpty && state.refreshToken.isEmpty) {
+      return state;
     }
     if (!state.isExpired) {
       return state;

@@ -6,8 +6,20 @@ import 'package:ma_palyer/features/playback/playback_orchestrator.dart';
 import 'package:ma_palyer/features/player/media_kit_player_controller.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
+class PlayerPageArgs {
+  const PlayerPageArgs({
+    required this.media,
+    this.title,
+  });
+
+  final PlayableMedia media;
+  final String? title;
+}
+
 class PlayerPage extends StatefulWidget {
-  const PlayerPage({super.key});
+  const PlayerPage({super.key, this.args});
+
+  final PlayerPageArgs? args;
 
   @override
   State<PlayerPage> createState() => _PlayerPageState();
@@ -28,6 +40,8 @@ class _PlayerPageState extends State<PlayerPage> {
   QuarkQrSession? _qrSession;
   PlayableMedia? _lastMedia;
 
+  bool get _isDirectPlaybackMode => widget.args != null;
+
   @override
   void initState() {
     super.initState();
@@ -35,6 +49,10 @@ class _PlayerPageState extends State<PlayerPage> {
     _videoController = VideoController(_playerController.player);
     _quarkAuthService = QuarkAuthService();
     _orchestrator = PlaybackOrchestrator(quarkAuthService: _quarkAuthService);
+    final args = widget.args;
+    if (args != null) {
+      _openMedia(args.media);
+    }
   }
 
   @override
@@ -44,6 +62,32 @@ class _PlayerPageState extends State<PlayerPage> {
     _episodeUrlController.dispose();
     _playerController.dispose();
     super.dispose();
+  }
+
+  Future<void> _openMedia(PlayableMedia media) async {
+    setState(() {
+      _isLoading = true;
+      _statusText = '正在打开视频...';
+    });
+    try {
+      _lastMedia = media;
+      await _playerController.open(media.url, headers: media.headers);
+      if (!mounted) return;
+      setState(() {
+        _statusText = '播放中';
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _statusText = '播放失败: $e';
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
   }
 
   Future<void> _resolveAndPlay() async {
@@ -81,15 +125,7 @@ class _PlayerPageState extends State<PlayerPage> {
           return session;
         },
       );
-      _lastMedia = result.media;
-      await _playerController.open(
-        result.media.url,
-        headers: result.media.headers,
-      );
-      if (!mounted) return;
-      setState(() {
-        _statusText = '播放就绪: ${result.media.url}';
-      });
+      await _openMedia(result.media);
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -114,6 +150,7 @@ class _PlayerPageState extends State<PlayerPage> {
 
   @override
   Widget build(BuildContext context) {
+    final args = widget.args;
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Center(
@@ -123,59 +160,61 @@ class _PlayerPageState extends State<PlayerPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Playback Debug',
+                _isDirectPlaybackMode ? (args?.title ?? 'Player') : 'Playback Debug',
                 style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                   fontWeight: FontWeight.w800,
                 ),
               ),
-              const SizedBox(height: 12),
-              Wrap(
-                spacing: 12,
-                runSpacing: 12,
-                children: [
-                  SizedBox(
-                    width: 320,
-                    child: TextField(
-                      controller: _sourceKeyController,
-                      decoration: const InputDecoration(labelText: 'sourceKey'),
-                    ),
-                  ),
-                  SizedBox(
-                    width: 260,
-                    child: TextField(
-                      controller: _playFlagController,
-                      decoration: const InputDecoration(labelText: 'playFlag'),
-                    ),
-                  ),
-                  SizedBox(
-                    width: 520,
-                    child: TextField(
-                      controller: _episodeUrlController,
-                      decoration: const InputDecoration(
-                        labelText:
-                            'episodeUrl (e.g. quark://shareRef or http url)',
+              if (!_isDirectPlaybackMode) ...[
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 12,
+                  children: [
+                    SizedBox(
+                      width: 320,
+                      child: TextField(
+                        controller: _sourceKeyController,
+                        decoration: const InputDecoration(labelText: 'sourceKey'),
                       ),
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Wrap(
-                spacing: 12,
-                runSpacing: 12,
-                children: [
-                  FilledButton.icon(
-                    onPressed: _isLoading ? null : _resolveAndPlay,
-                    icon: const Icon(Icons.play_arrow_outlined),
-                    label: Text(_isLoading ? '处理中...' : '解析并播放'),
-                  ),
-                  OutlinedButton.icon(
-                    onPressed: _logoutQuark,
-                    icon: const Icon(Icons.logout),
-                    label: const Text('退出夸克登录'),
-                  ),
-                ],
-              ),
+                    SizedBox(
+                      width: 260,
+                      child: TextField(
+                        controller: _playFlagController,
+                        decoration: const InputDecoration(labelText: 'playFlag'),
+                      ),
+                    ),
+                    SizedBox(
+                      width: 520,
+                      child: TextField(
+                        controller: _episodeUrlController,
+                        decoration: const InputDecoration(
+                          labelText:
+                              'episodeUrl (e.g. quark://shareRef or http url)',
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 12,
+                  children: [
+                    FilledButton.icon(
+                      onPressed: _isLoading ? null : _resolveAndPlay,
+                      icon: const Icon(Icons.play_arrow_outlined),
+                      label: Text(_isLoading ? '处理中...' : '解析并播放'),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: _logoutQuark,
+                      icon: const Icon(Icons.logout),
+                      label: const Text('退出夸克登录'),
+                    ),
+                  ],
+                ),
+              ],
               const SizedBox(height: 12),
               Container(
                 width: double.infinity,

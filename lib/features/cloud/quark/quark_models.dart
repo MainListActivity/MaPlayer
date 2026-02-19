@@ -64,11 +64,43 @@ class QuarkSavedFile {
     required this.fileId,
     required this.fileName,
     required this.parentDir,
+    this.parentFolderId,
   });
 
   final String fileId;
   final String fileName;
   final String parentDir;
+  final String? parentFolderId;
+}
+
+class QuarkFolderLookupResult {
+  const QuarkFolderLookupResult({
+    required this.folderId,
+    required this.folderName,
+    required this.created,
+    required this.path,
+  });
+
+  final String folderId;
+  final String folderName;
+  final bool created;
+  final String path;
+}
+
+class QuarkFileEntry {
+  const QuarkFileEntry({
+    required this.fileId,
+    required this.fileName,
+    required this.isDirectory,
+    this.size,
+    this.updatedAtEpochMs,
+  });
+
+  final String fileId;
+  final String fileName;
+  final bool isDirectory;
+  final int? size;
+  final int? updatedAtEpochMs;
 }
 
 class QuarkPlayableFile {

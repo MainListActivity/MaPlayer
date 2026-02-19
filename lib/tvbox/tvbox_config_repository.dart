@@ -9,16 +9,26 @@ import 'package:shared_preferences/shared_preferences.dart';
 class TvBoxConfigRepository {
   static const String _sourceUrlKey = 'tvbox_source_url';
   static const String _rawJsonKey = 'tvbox_raw_json';
+  static const String _homeSiteUrlKey = 'home_site_url';
+  static const String _defaultHomeSiteUrl = 'https://www.wogg.net/';
   static final ValueNotifier<int> configRevision = ValueNotifier<int>(0);
 
   String normalizeSubscriptionUrl(String rawUrl) {
+    return normalizeHttpUrl(rawUrl, emptyMessage: '订阅地址不能为空。');
+  }
+
+  String normalizeHomeUrl(String rawUrl) {
+    return normalizeHttpUrl(rawUrl, emptyMessage: '主页地址不能为空。');
+  }
+
+  String normalizeHttpUrl(String rawUrl, {required String emptyMessage}) {
     var input = rawUrl
         .trim()
         .replaceAll(RegExp(r'[\u200B-\u200D\uFEFF]'), '')
         .replaceAll('：', ':')
         .replaceAll('／', '/');
     if (input.isEmpty) {
-      throw const FormatException('订阅地址不能为空。');
+      throw FormatException(emptyMessage);
     }
     if (!RegExp(r'^[a-zA-Z][a-zA-Z0-9+.-]*://').hasMatch(input)) {
       input = 'http://$input';
@@ -31,6 +41,27 @@ class TvBoxConfigRepository {
       throw const FormatException('订阅地址格式不合法，请输入 http/https 地址。');
     }
     return uri.toString();
+  }
+
+  Future<void> saveHomeSiteUrl(String url) async {
+    final prefs = await SharedPreferences.getInstance();
+    final next = normalizeHomeUrl(url);
+    final prev = prefs.getString(_homeSiteUrlKey) ?? '';
+    await prefs.setString(_homeSiteUrlKey, next);
+    if (prev != next) {
+      configRevision.value += 1;
+    }
+  }
+
+  Future<String> loadHomeSiteUrlOrDefault() async {
+    final prefs = await SharedPreferences.getInstance();
+    final stored = prefs.getString(_homeSiteUrlKey)?.trim() ?? '';
+    if (stored.isEmpty) return _defaultHomeSiteUrl;
+    try {
+      return normalizeHomeUrl(stored);
+    } on FormatException {
+      return _defaultHomeSiteUrl;
+    }
   }
 
   Future<String> fetchFromUrl(String url) async {

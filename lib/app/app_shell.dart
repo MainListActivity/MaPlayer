@@ -1,34 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:ma_palyer/app/app_route.dart';
-import 'package:ma_palyer/tvbox/tvbox_config_repository.dart';
 
 class AppShell extends StatelessWidget {
   const AppShell({
     super.key,
     required this.currentRoute,
     required this.child,
-    this.repository,
   });
 
   final AppRoute currentRoute;
   final Widget child;
-  final TvBoxConfigRepository? repository;
-
-  TvBoxConfigRepository get _repository =>
-      repository ?? TvBoxConfigRepository();
 
   Future<void> _onMenuTap(BuildContext context, AppRoute targetRoute) async {
     if (targetRoute == currentRoute) {
-      return;
-    }
-
-    final hasConfig = await _repository.hasAnyDraftConfig();
-    if (!hasConfig && targetRoute != AppRoute.settings) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('请先完成 TVBox 配置')));
-      Navigator.pushReplacementNamed(context, AppRoutes.settings);
       return;
     }
 

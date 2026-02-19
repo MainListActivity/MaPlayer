@@ -68,10 +68,11 @@ class MaPlayerApp extends StatelessWidget {
           child: const SettingsPage(),
         );
       case AppRoutes.player:
+        final args = settings.arguments;
         return _buildMenuRoute(
           settings: settings,
           currentRoute: AppRoute.player,
-          child: const PlayerPage(),
+          child: PlayerPage(args: args is PlayerPageArgs ? args : null),
         );
       default:
         return MaterialPageRoute<void>(
