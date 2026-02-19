@@ -61,7 +61,10 @@ class TvBoxParser {
     return parseMap(Map<String, dynamic>.from(decoded), baseUri: baseUri);
   }
 
-  Future<TvBoxParseReport> parseMap(Map<String, dynamic> map, {Uri? baseUri}) async {
+  Future<TvBoxParseReport> parseMap(
+    Map<String, dynamic> map, {
+    Uri? baseUri,
+  }) async {
     final issues = <TvBoxIssue>[];
     void issueSink(
       TvBoxIssueLevel level,
@@ -136,7 +139,9 @@ class TvBoxParser {
         path: r'$.ijk',
         issueSink: issueSink,
       ),
-      ads: mergedRoot['ads'] is List ? List<dynamic>.from(mergedRoot['ads'] as List) : null,
+      ads: mergedRoot['ads'] is List
+          ? List<dynamic>.from(mergedRoot['ads'] as List)
+          : null,
       drives: drives,
       rules: rules,
       player: player,
@@ -213,7 +218,8 @@ class TvBoxParser {
       final siteMap = maps[i];
       final path = '\$.sites[$i]';
       Map<String, dynamic>? resolvedExt;
-      if (siteMap['ext'] is String && (siteMap['ext'] as String).trim().isNotEmpty) {
+      if (siteMap['ext'] is String &&
+          (siteMap['ext'] as String).trim().isNotEmpty) {
         resolvedExt = await _extResolver.resolveExtToMap(
           extValue: siteMap['ext'],
           path: '$path.ext',
@@ -222,13 +228,15 @@ class TvBoxParser {
         );
       }
 
-      final key = TvBoxNormalizers.asString(
+      final key =
+          TvBoxNormalizers.asString(
             siteMap['key'],
             path: '$path.key',
             issueSink: issueSink,
           ) ??
           '';
-      final name = TvBoxNormalizers.asString(
+      final name =
+          TvBoxNormalizers.asString(
             siteMap['name'],
             path: '$path.name',
             issueSink: issueSink,
@@ -248,24 +256,21 @@ class TvBoxParser {
       result.add(
         TvBoxSite(
           raw: siteMap,
-          extras: _extrasFromMap(
-            siteMap,
-            const {
-              'key',
-              'name',
-              'type',
-              'api',
-              'searchable',
-              'quickSearch',
-              'filterable',
-              'changeable',
-              'playUrl',
-              'ext',
-              'jar',
-              'categories',
-              'style',
-            },
-          ),
+          extras: _extrasFromMap(siteMap, const {
+            'key',
+            'name',
+            'type',
+            'api',
+            'searchable',
+            'quickSearch',
+            'filterable',
+            'changeable',
+            'playUrl',
+            'ext',
+            'jar',
+            'categories',
+            'style',
+          }),
           key: key,
           name: name,
           api: TvBoxNormalizers.asString(
@@ -337,7 +342,8 @@ class TvBoxParser {
       final liveMap = maps[i];
       final path = '\$.lives[$i]';
       Map<String, dynamic>? resolvedExt;
-      if (liveMap['ext'] is String && (liveMap['ext'] as String).trim().isNotEmpty) {
+      if (liveMap['ext'] is String &&
+          (liveMap['ext'] as String).trim().isNotEmpty) {
         resolvedExt = await _extResolver.resolveExtToMap(
           extValue: liveMap['ext'],
           path: '$path.ext',
@@ -348,10 +354,16 @@ class TvBoxParser {
       result.add(
         TvBoxLive(
           raw: liveMap,
-          extras: _extrasFromMap(
-            liveMap,
-            const {'name', 'url', 'type', 'ua', 'epg', 'logo', 'header', 'ext'},
-          ),
+          extras: _extrasFromMap(liveMap, const {
+            'name',
+            'url',
+            'type',
+            'ua',
+            'epg',
+            'logo',
+            'header',
+            'ext',
+          }),
           name: TvBoxNormalizers.asString(
             liveMap['name'],
             path: '$path.name',
@@ -410,7 +422,8 @@ class TvBoxParser {
       final parseMap = maps[i];
       final path = '\$.parses[$i]';
       Map<String, dynamic>? resolvedExt;
-      if (parseMap['ext'] is String && (parseMap['ext'] as String).trim().isNotEmpty) {
+      if (parseMap['ext'] is String &&
+          (parseMap['ext'] as String).trim().isNotEmpty) {
         resolvedExt = await _extResolver.resolveExtToMap(
           extValue: parseMap['ext'],
           path: '$path.ext',
@@ -422,10 +435,16 @@ class TvBoxParser {
       result.add(
         TvBoxParse(
           raw: parseMap,
-          extras: _extrasFromMap(
-            parseMap,
-            const {'name', 'url', 'type', 'ext', 'header', 'priority', 'web', 'flag'},
-          ),
+          extras: _extrasFromMap(parseMap, const {
+            'name',
+            'url',
+            'type',
+            'ext',
+            'header',
+            'priority',
+            'web',
+            'flag',
+          }),
           name: TvBoxNormalizers.asString(
             parseMap['name'],
             path: '$path.name',
@@ -484,7 +503,8 @@ class TvBoxParser {
       final driveMap = maps[i];
       final path = '\$.drives[$i]';
       Map<String, dynamic>? resolvedExt;
-      if (driveMap['ext'] is String && (driveMap['ext'] as String).trim().isNotEmpty) {
+      if (driveMap['ext'] is String &&
+          (driveMap['ext'] as String).trim().isNotEmpty) {
         resolvedExt = await _extResolver.resolveExtToMap(
           extValue: driveMap['ext'],
           path: '$path.ext',
@@ -496,10 +516,13 @@ class TvBoxParser {
       result.add(
         TvBoxDrive(
           raw: driveMap,
-          extras: _extrasFromMap(
-            driveMap,
-            const {'provider', 'key', 'name', 'api', 'ext'},
-          ),
+          extras: _extrasFromMap(driveMap, const {
+            'provider',
+            'key',
+            'name',
+            'api',
+            'ext',
+          }),
           provider: TvBoxNormalizers.asString(
             driveMap['provider'],
             path: '$path.provider',
@@ -541,7 +564,12 @@ class TvBoxParser {
       result.add(
         TvBoxRule(
           raw: ruleMap,
-          extras: _extrasFromMap(ruleMap, const {'enable', 'match', 'replace', 'priority'}),
+          extras: _extrasFromMap(ruleMap, const {
+            'enable',
+            'match',
+            'replace',
+            'priority',
+          }),
           enable: TvBoxNormalizers.asBool(
             ruleMap['enable'],
             path: '$path.enable',
@@ -602,35 +630,35 @@ class TvBoxParser {
   }
 
   Map<String, dynamic> _extrasFromRoot(Map<String, dynamic> map) {
-    return _extrasFromMap(
-      map,
-      const {
-        'spider',
-        'wallpaper',
-        'logo',
-        'sites',
-        'parses',
-        'lives',
-        'flags',
-        'ijk',
-        'ads',
-        'drives',
-        'rules',
-        'player',
-        'cache',
-        'proxy',
-        'dns',
-        'headers',
-        'ua',
-        'timeout',
-        'recommend',
-        'hotSearch',
-        'ext',
-      },
-    );
+    return _extrasFromMap(map, const {
+      'spider',
+      'wallpaper',
+      'logo',
+      'sites',
+      'parses',
+      'lives',
+      'flags',
+      'ijk',
+      'ads',
+      'drives',
+      'rules',
+      'player',
+      'cache',
+      'proxy',
+      'dns',
+      'headers',
+      'ua',
+      'timeout',
+      'recommend',
+      'hotSearch',
+      'ext',
+    });
   }
 
-  Map<String, dynamic> _extrasFromMap(Map<String, dynamic> map, Set<String> knownKeys) {
+  Map<String, dynamic> _extrasFromMap(
+    Map<String, dynamic> map,
+    Set<String> knownKeys,
+  ) {
     final extras = <String, dynamic>{};
     for (final entry in map.entries) {
       if (!knownKeys.contains(entry.key)) {

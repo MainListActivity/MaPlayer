@@ -52,7 +52,8 @@ class TvBoxConfig {
   final dynamic ext;
   final Map<String, dynamic>? resolvedExtRaw;
 
-  int get enabledSiteCount => sites.where((site) => !site.searchableZero).length;
+  int get enabledSiteCount =>
+      sites.where((site) => !site.searchableZero).length;
 }
 
 class TvBoxSite {

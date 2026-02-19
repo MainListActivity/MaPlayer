@@ -1,10 +1,6 @@
 import 'package:ma_palyer/tvbox/tvbox_models.dart';
 
-enum TvBoxIssueLevel {
-  fatal,
-  error,
-  warning,
-}
+enum TvBoxIssueLevel { fatal, error, warning }
 
 class TvBoxIssue {
   const TvBoxIssue({
@@ -23,15 +19,15 @@ class TvBoxIssue {
 }
 
 class TvBoxParseReport {
-  const TvBoxParseReport({
-    required this.issues,
-    this.config,
-  });
+  const TvBoxParseReport({required this.issues, this.config});
 
   final TvBoxConfig? config;
   final List<TvBoxIssue> issues;
 
-  bool get hasFatalError => issues.any((issue) => issue.level == TvBoxIssueLevel.fatal);
-  int get errorCount => issues.where((issue) => issue.level == TvBoxIssueLevel.error).length;
-  int get warningCount => issues.where((issue) => issue.level == TvBoxIssueLevel.warning).length;
+  bool get hasFatalError =>
+      issues.any((issue) => issue.level == TvBoxIssueLevel.fatal);
+  int get errorCount =>
+      issues.where((issue) => issue.level == TvBoxIssueLevel.error).length;
+  int get warningCount =>
+      issues.where((issue) => issue.level == TvBoxIssueLevel.warning).length;
 }

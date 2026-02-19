@@ -1,26 +1,85 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ma_palyer/main.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-void main() {
-  testWidgets('renders TVBox config page', (WidgetTester tester) async {
-    SharedPreferences.setMockInitialValues(<String, Object>{});
-    await tester.pumpWidget(const MaPlayerApp());
-    await tester.pump(const Duration(milliseconds: 200));
+Future<void> _pumpApp(WidgetTester tester) async {
+  await tester.pumpWidget(const MaPlayerApp());
+  await tester.pumpAndSettle();
+}
 
-    expect(find.text('Ma Player TVBox 配置'), findsOneWidget);
-    expect(find.text('兼容 TVBox 协议的配置入口'), findsOneWidget);
+void main() {
+  testWidgets('bootstrap_unconfigured_goes_to_settings', (
+    WidgetTester tester,
+  ) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+
+    await _pumpApp(tester);
+
+    expect(find.byKey(const Key('settings-page-title')), findsOneWidget);
+    expect(find.byKey(const Key('menu-settings')), findsOneWidget);
   });
 
-  testWidgets('shows issue summary when draft contains invalid json', (WidgetTester tester) async {
+  testWidgets('bootstrap_configured_goes_to_home', (WidgetTester tester) async {
     SharedPreferences.setMockInitialValues(<String, Object>{
-      'tvbox_raw_json': '[1,2,3]',
+      'tvbox_raw_json': '{"sites":[]}',
     });
 
-    await tester.pumpWidget(const MaPlayerApp());
-    await tester.pump(const Duration(milliseconds: 300));
+    await _pumpApp(tester);
 
-    expect(find.textContaining('解析状态'), findsOneWidget);
-    expect(find.textContaining('TVB_JSON_ROOT_NOT_OBJECT'), findsOneWidget);
+    expect(find.byKey(const Key('home-page-title')), findsOneWidget);
+  });
+
+  testWidgets('menu_switch_route_when_configured', (WidgetTester tester) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      'tvbox_source_url': 'https://example.com/tvbox.json',
+    });
+
+    await _pumpApp(tester);
+    expect(find.byKey(const Key('home-page-title')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('menu-movies')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('movies-page-title')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('menu-tvShows')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('tvshows-page-title')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('menu-settings')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('settings-page-title')), findsOneWidget);
+  });
+
+  testWidgets('menu_block_non_settings_when_unconfigured', (
+    WidgetTester tester,
+  ) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+
+    await _pumpApp(tester);
+    expect(find.byKey(const Key('settings-page-title')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('menu-home')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('请先完成 TVBox 配置'), findsOneWidget);
+    expect(find.byKey(const Key('settings-page-title')), findsOneWidget);
+  });
+
+  testWidgets('settings_parse_flow_still_works', (WidgetTester tester) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+
+    await _pumpApp(tester);
+    expect(find.byKey(const Key('settings-page-title')), findsOneWidget);
+
+    await tester.enterText(
+      find.widgetWithText(TextField, 'TVBox JSON'),
+      '{"sites":[]}',
+    );
+    await tester.ensureVisible(find.byKey(const Key('parse-config-button')));
+    await tester.tap(find.byKey(const Key('parse-config-button')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('解析状态'), findsOneWidget);
   });
 }

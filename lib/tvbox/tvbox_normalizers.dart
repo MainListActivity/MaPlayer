@@ -1,12 +1,13 @@
 import 'package:ma_palyer/tvbox/tvbox_parse_report.dart';
 
-typedef TvBoxIssueSink = void Function(
-  TvBoxIssueLevel level,
-  String code,
-  String path,
-  String message, {
-  Object? rawValue,
-});
+typedef TvBoxIssueSink =
+    void Function(
+      TvBoxIssueLevel level,
+      String code,
+      String path,
+      String message, {
+      Object? rawValue,
+    });
 
 class TvBoxNormalizers {
   static String? asString(

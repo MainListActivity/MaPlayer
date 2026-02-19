@@ -81,10 +81,12 @@ void main() {
 
   test('ext_single_layer_and_local_override', () async {
     final resolver = FakeTvBoxSourceResolver({
-      'https://example.com/ext.json': '{"sites": [{"key": "remote", "name": "r"}], "ua": "remote"}',
+      'https://example.com/ext.json':
+          '{"sites": [{"key": "remote", "name": "r"}], "ua": "remote"}',
     });
     final parser = TvBoxParser(sourceResolver: resolver);
-    const raw = '{"ext": "https://example.com/ext.json", "ua": "local", "sites": [{"key": "local", "name": "l"}]}';
+    const raw =
+        '{"ext": "https://example.com/ext.json", "ua": "local", "sites": [{"key": "local", "name": "l"}]}';
 
     final report = await parser.parseString(raw);
     expect(report.hasFatalError, isFalse);
@@ -95,7 +97,8 @@ void main() {
 
   test('ext_recursive_relative_and_cycle', () async {
     final resolver = FakeTvBoxSourceResolver({
-      'https://example.com/a.json': '{"ext": "b.json", "sites": [{"key": "a", "name": "A"}]}',
+      'https://example.com/a.json':
+          '{"ext": "b.json", "sites": [{"key": "a", "name": "A"}]}',
       'https://example.com/b.json': '{"ext": "a.json", "ua": "B"}',
     });
     final parser = TvBoxParser(sourceResolver: resolver, maxDepth: 8);
@@ -114,8 +117,12 @@ void main() {
     });
     final parser = TvBoxParser(sourceResolver: resolver);
 
-    final report1 = await parser.parseString('{"ext": "https://example.com/nonjson"}');
-    final report2 = await parser.parseString('{"ext": "https://example.com/notfound"}');
+    final report1 = await parser.parseString(
+      '{"ext": "https://example.com/nonjson"}',
+    );
+    final report2 = await parser.parseString(
+      '{"ext": "https://example.com/notfound"}',
+    );
 
     expect(report1.issues.any((e) => e.code == 'TVB_EXT_NON_OBJECT'), isTrue);
     expect(report2.issues.any((e) => e.code == 'TVB_EXT_LOAD_FAILED'), isTrue);
