@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:ma_palyer/network/http_headers.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -8,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 class TvBoxConfigRepository {
   static const String _sourceUrlKey = 'tvbox_source_url';
   static const String _rawJsonKey = 'tvbox_raw_json';
+  static final ValueNotifier<int> configRevision = ValueNotifier<int>(0);
 
   String normalizeSubscriptionUrl(String rawUrl) {
     var input = rawUrl
@@ -58,8 +60,13 @@ class TvBoxConfigRepository {
     required String rawJson,
   }) async {
     final prefs = await SharedPreferences.getInstance();
+    final prevSourceUrl = prefs.getString(_sourceUrlKey) ?? '';
+    final prevRawJson = prefs.getString(_rawJsonKey) ?? '';
     await prefs.setString(_sourceUrlKey, sourceUrl);
     await prefs.setString(_rawJsonKey, rawJson);
+    if (prevSourceUrl != sourceUrl || prevRawJson != rawJson) {
+      configRevision.value += 1;
+    }
   }
 
   Future<({String sourceUrl, String rawJson})> loadDraft() async {

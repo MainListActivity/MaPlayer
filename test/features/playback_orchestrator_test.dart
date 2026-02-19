@@ -29,6 +29,18 @@ class _FakeSpiderInstance implements SpiderInstance {
   String get sourceKey => 'fake';
 
   @override
+  Future<Map<String, dynamic>> homeContent({bool filter = true}) async =>
+      <String, dynamic>{'list': const <Map<String, dynamic>>[]};
+
+  @override
+  Future<Map<String, dynamic>> categoryContent(
+    String categoryId, {
+    int page = 1,
+    bool filter = true,
+    Map<String, dynamic>? extend,
+  }) async => <String, dynamic>{'list': const <Map<String, dynamic>>[]};
+
+  @override
   Future<Map<String, dynamic>> detailContent(List<String> ids) async =>
       <String, dynamic>{};
 

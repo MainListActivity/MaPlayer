@@ -1,7 +1,6 @@
-import 'dart:io';
-
 import 'package:ma_palyer/core/spider/spider_engine.dart';
 import 'package:ma_palyer/core/spider/spider_process_manager.dart';
+import 'package:ma_palyer/core/spider/spider_runtime_script_locator.dart';
 
 class JarSpiderExecutor implements SpiderExecutor {
   JarSpiderExecutor({SpiderTraceLogger? logger}) : _logger = logger;
@@ -14,9 +13,12 @@ class JarSpiderExecutor implements SpiderExecutor {
 
   @override
   Future<void> init(SpiderRuntimeSite site) async {
+    final scriptPath = await SpiderRuntimeScriptLocator.ensureScript(
+      'run_jar.sh',
+    );
     _manager ??= SpiderProcessManager(
       command: 'bash',
-      arguments: <String>[_scriptPath('run_jar.sh')],
+      arguments: <String>[scriptPath],
       logger: _logger,
     );
     await _manager!.call('init', <String, dynamic>{
@@ -44,9 +46,5 @@ class JarSpiderExecutor implements SpiderExecutor {
     await _manager?.call('destroy', const <String, dynamic>{});
     await _manager?.dispose();
     _manager = null;
-  }
-
-  String _scriptPath(String scriptName) {
-    return '${Directory.current.path}/tool/spider_runtime/$scriptName';
   }
 }

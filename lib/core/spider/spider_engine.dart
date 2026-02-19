@@ -18,15 +18,40 @@ class SpiderRuntimeSite {
   final String jar;
 }
 
-SpiderEngineType detectEngineFromSite(TvBoxSite site) {
-  final api = site.api ?? '';
-  if (api.contains('.js')) return SpiderEngineType.js;
-  if (api.contains('.py')) return SpiderEngineType.py;
+SpiderEngineType detectEngineFromSite(TvBoxSite site, {String? globalSpider}) {
+  final api = (site.api ?? '').trim();
+  final jar = (site.jar?.trim().isNotEmpty ?? false)
+      ? site.jar!.trim()
+      : (globalSpider?.trim() ?? '');
+
+  if (_isScriptOfType(api, '.py') || _isScriptOfType(jar, '.py')) {
+    return SpiderEngineType.py;
+  }
+  if (_isScriptOfType(api, '.js') || _isScriptOfType(jar, '.js')) {
+    return SpiderEngineType.js;
+  }
   return SpiderEngineType.jar;
+}
+
+bool _isScriptOfType(String value, String ext) {
+  if (value.isEmpty) return false;
+  final firstPart = value.split(';').first.trim();
+  final uri = Uri.tryParse(firstPart);
+  final path = (uri?.path ?? firstPart).toLowerCase();
+  return path.endsWith(ext);
 }
 
 abstract class SpiderInstance {
   String get sourceKey;
+
+  Future<Map<String, dynamic>> homeContent({bool filter = true});
+
+  Future<Map<String, dynamic>> categoryContent(
+    String categoryId, {
+    int page = 1,
+    bool filter = true,
+    Map<String, dynamic>? extend,
+  });
 
   Future<Map<String, dynamic>> detailContent(List<String> ids);
 

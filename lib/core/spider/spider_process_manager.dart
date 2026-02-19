@@ -81,7 +81,23 @@ class SpiderProcessManager {
       'params': params,
     });
 
-    process.stdin.writeln(request);
+    try {
+      process.stdin.writeln(request);
+    } on SocketException catch (e) {
+      _pending.remove(id);
+      throw SpiderRuntimeException(
+        'Failed to write request to spider process: ${e.message}',
+        code: 'PROCESS_WRITE_FAILED',
+        detail: 'method=$method errno=${e.osError?.errorCode}',
+      );
+    } on StateError catch (e) {
+      _pending.remove(id);
+      throw SpiderRuntimeException(
+        'Spider process stdin is closed: $e',
+        code: 'PROCESS_STDIN_CLOSED',
+        detail: 'method=$method',
+      );
+    }
 
     try {
       return await completer.future.timeout(requestTimeout);

@@ -1,3 +1,4 @@
+import 'package:ma_palyer/core/spider/spider_asset_resolver.dart';
 import 'package:ma_palyer/core/spider/process/jar_executor.dart';
 import 'package:ma_palyer/core/spider/process/js_executor.dart';
 import 'package:ma_palyer/core/spider/process/py_executor.dart';
@@ -6,12 +7,17 @@ import 'package:ma_palyer/core/spider/spider_source_registry.dart';
 import 'package:ma_palyer/tvbox/tvbox_models.dart';
 
 class SpiderRuntime {
-  SpiderRuntime({SpiderSourceRegistry? registry, SpiderTraceLogger? logger})
-    : _registry = registry ?? SpiderSourceRegistry(),
-      _logger = logger;
+  SpiderRuntime({
+    SpiderSourceRegistry? registry,
+    SpiderTraceLogger? logger,
+    SpiderAssetResolver? assetResolver,
+  }) : _registry = registry ?? SpiderSourceRegistry(),
+       _logger = logger,
+       _assetResolver = assetResolver ?? SpiderAssetResolver(logger: logger);
 
   final SpiderSourceRegistry _registry;
   final SpiderTraceLogger? _logger;
+  final SpiderAssetResolver _assetResolver;
 
   final Map<String, _SpiderRuntimeInstance> _instances =
       <String, _SpiderRuntimeInstance>{};
@@ -20,7 +26,14 @@ class SpiderRuntime {
     final existed = _instances[sourceKey];
     if (existed != null) return existed;
 
-    final site = await _registry.findSite(sourceKey);
+    final config = await _registry.loadConfig();
+    TvBoxSite? site;
+    for (final item in config.sites) {
+      if (item.key == sourceKey) {
+        site = item;
+        break;
+      }
+    }
     if (site == null) {
       throw SpiderRuntimeException(
         'Site not found for sourceKey=$sourceKey',
@@ -28,14 +41,13 @@ class SpiderRuntime {
       );
     }
 
-    final runtimeSite = SpiderRuntimeSite(
+    final runtimeSite = await _assetResolver.resolveRuntimeSite(
+      site: site,
       sourceKey: sourceKey,
-      api: site.api ?? '',
-      ext: site.ext?.toString() ?? '',
-      jar: site.jar ?? '',
+      globalSpider: config.spider,
     );
 
-    final engine = _createExecutor(site);
+    final engine = _createExecutor(site, globalSpider: config.spider);
     await engine.init(runtimeSite);
     final instance = _SpiderRuntimeInstance(
       sourceKey: sourceKey,
@@ -65,13 +77,17 @@ class SpiderRuntime {
 
   Future<void> dispose() async {
     for (final instance in _instances.values) {
-      await instance.dispose();
+      try {
+        await instance.dispose();
+      } catch (e) {
+        _logger?.call('Spider instance dispose failed: $e');
+      }
     }
     _instances.clear();
   }
 
-  SpiderExecutor _createExecutor(TvBoxSite site) {
-    final type = detectEngineFromSite(site);
+  SpiderExecutor _createExecutor(TvBoxSite site, {String? globalSpider}) {
+    final type = detectEngineFromSite(site, globalSpider: globalSpider);
     return switch (type) {
       SpiderEngineType.js => JsSpiderExecutor(logger: _logger),
       SpiderEngineType.jar => JarSpiderExecutor(logger: _logger),
@@ -92,6 +108,26 @@ class _SpiderRuntimeInstance implements SpiderInstance {
   final SpiderTraceLogger? logger;
 
   final SpiderExecutor executor;
+
+  @override
+  Future<Map<String, dynamic>> homeContent({bool filter = true}) {
+    return executor.invoke('homeContent', <String, dynamic>{'filter': filter});
+  }
+
+  @override
+  Future<Map<String, dynamic>> categoryContent(
+    String categoryId, {
+    int page = 1,
+    bool filter = true,
+    Map<String, dynamic>? extend,
+  }) {
+    return executor.invoke('categoryContent', <String, dynamic>{
+      'tid': categoryId,
+      'pg': page.toString(),
+      'filter': filter,
+      'extend': extend ?? const <String, dynamic>{},
+    });
+  }
 
   @override
   Future<Map<String, dynamic>> detailContent(List<String> ids) {
@@ -121,6 +157,10 @@ class _SpiderRuntimeInstance implements SpiderInstance {
 
   @override
   Future<void> dispose() async {
-    await executor.destroy();
+    try {
+      await executor.destroy();
+    } catch (e) {
+      logger?.call('Spider executor destroy failed: $e');
+    }
   }
 }

@@ -82,4 +82,25 @@ void main() {
 
     expect(find.text('解析状态'), findsOneWidget);
   });
+
+  testWidgets('home_renders_sites_from_tvbox_config', (
+    WidgetTester tester,
+  ) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      'tvbox_raw_json':
+          '{"sites":[{"key":"demo","name":"演示源","api":"https://example.com/api","searchable":1}]}',
+    });
+
+    await tester.pumpWidget(const MaPlayerApp());
+    for (var i = 0; i < 40; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+      if (find.byKey(const Key('source-menu-demo')).evaluate().isNotEmpty) {
+        break;
+      }
+    }
+
+    expect(find.byKey(const Key('home-page-title')), findsWidgets);
+    expect(find.byKey(const Key('source-menu-demo')), findsWidgets);
+    expect(find.text('演示源'), findsWidgets);
+  });
 }

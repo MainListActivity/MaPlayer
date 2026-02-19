@@ -89,11 +89,11 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "com.example" "\0"
+            VALUE "CompanyName", "com.mp" "\0"
             VALUE "FileDescription", "ma_palyer" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
             VALUE "InternalName", "ma_palyer" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2026 com.example. All rights reserved." "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2026 com.mp. All rights reserved." "\0"
             VALUE "OriginalFilename", "ma_palyer.exe" "\0"
             VALUE "ProductName", "ma_palyer" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
