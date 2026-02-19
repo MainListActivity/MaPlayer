@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:http/http.dart' as http;
+import 'package:ma_palyer/network/http_headers.dart';
 
 abstract class TvBoxSourceResolver {
   Future<String> load(Uri uri, {required Duration timeout});
@@ -13,7 +14,9 @@ class DefaultTvBoxSourceResolver implements TvBoxSourceResolver {
   @override
   Future<String> load(Uri uri, {required Duration timeout}) async {
     if (uri.scheme == 'http' || uri.scheme == 'https') {
-      final response = await http.get(uri).timeout(timeout);
+      final response = await http
+          .get(uri, headers: kDefaultHttpHeaders)
+          .timeout(timeout);
       if (response.statusCode < 200 || response.statusCode >= 300) {
         throw HttpException('HTTP ${response.statusCode}', uri: uri);
       }
