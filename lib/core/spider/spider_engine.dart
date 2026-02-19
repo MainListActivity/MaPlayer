@@ -87,7 +87,13 @@ class SpiderRuntimeException implements Exception {
   final String? detail;
 
   @override
-  String toString() => 'SpiderRuntimeException($code): $message';
+  String toString() {
+    final d = detail?.trim();
+    if (d == null || d.isEmpty) {
+      return 'SpiderRuntimeException($code): $message';
+    }
+    return 'SpiderRuntimeException($code): $message\n$d';
+  }
 }
 
 class SpiderCallTrace {

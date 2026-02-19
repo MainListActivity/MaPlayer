@@ -1,32 +1,29 @@
 import 'package:ma_palyer/core/spider/spider_engine.dart';
-import 'package:ma_palyer/core/spider/spider_process_manager.dart';
-import 'package:ma_palyer/core/spider/spider_runtime_script_locator.dart';
+import 'package:ma_palyer/core/spider/process/jar_direct_bridge.dart';
 
 class JarSpiderExecutor implements SpiderExecutor {
   JarSpiderExecutor({SpiderTraceLogger? logger}) : _logger = logger;
 
   final SpiderTraceLogger? _logger;
-  SpiderProcessManager? _manager;
+  JarDirectBridge? _bridge;
 
   @override
   SpiderEngineType get type => SpiderEngineType.jar;
 
   @override
   Future<void> init(SpiderRuntimeSite site) async {
-    final scriptPath = await SpiderRuntimeScriptLocator.ensureScript(
-      'run_jar.sh',
-    );
-    _manager ??= SpiderProcessManager(
-      command: 'bash',
-      arguments: <String>[scriptPath],
-      logger: _logger,
-    );
-    await _manager!.call('init', <String, dynamic>{
-      'sourceKey': site.sourceKey,
-      'api': site.api,
-      'ext': site.ext,
-      'jar': site.jar,
-    });
+    _bridge ??= JarDirectBridge(site: site, logger: _logger);
+    try {
+      await _bridge!.invoke('init', <String, dynamic>{
+        'sourceKey': site.sourceKey,
+        'api': site.api,
+        'ext': site.ext,
+        'jar': site.jar,
+      });
+    } on SpiderRuntimeException catch (e) {
+      _logger?.call('[JarExecutor init failed] code=${e.code} detail=${e.detail}');
+      rethrow;
+    }
   }
 
   @override
@@ -34,17 +31,28 @@ class JarSpiderExecutor implements SpiderExecutor {
     String method,
     Map<String, dynamic> params,
   ) async {
-    final manager = _manager;
-    if (manager == null) {
+    final bridge = _bridge;
+    if (bridge == null) {
       throw SpiderRuntimeException('JAR executor is not initialized');
     }
-    return manager.call(method, params);
+    try {
+      return await bridge.invoke(method, params);
+    } on SpiderRuntimeException catch (e) {
+      _logger?.call(
+        '[JarExecutor invoke failed] method=$method code=${e.code} detail=${e.detail}',
+      );
+      rethrow;
+    }
   }
 
   @override
   Future<void> destroy() async {
-    await _manager?.call('destroy', const <String, dynamic>{});
-    await _manager?.dispose();
-    _manager = null;
+    final bridge = _bridge;
+    _bridge = null;
+    if (bridge != null) {
+      try {
+        await bridge.invoke('destroy', const <String, dynamic>{});
+      } catch (_) {}
+    }
   }
 }

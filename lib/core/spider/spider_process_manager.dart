@@ -24,8 +24,17 @@ class SpiderProcessManager {
   final Map<String, Completer<Map<String, dynamic>>> _pending =
       <String, Completer<Map<String, dynamic>>>{};
   bool _starting = false;
+  bool _inMemoryMode = false;
 
   Future<void> ensureStarted() async {
+    if (_inMemoryMode) return;
+    if (_shouldUseInMemoryMode()) {
+      _inMemoryMode = true;
+      logger?.call(
+        'Spider process fallback enabled: macOS App Sandbox detected',
+      );
+      return;
+    }
     if (_process != null) return;
     if (_starting) {
       while (_starting) {
@@ -63,6 +72,9 @@ class SpiderProcessManager {
     Map<String, dynamic> params,
   ) async {
     await ensureStarted();
+    if (_inMemoryMode) {
+      return _callInMemory(method, params);
+    }
     final process = _process;
     if (process == null) {
       throw SpiderRuntimeException(
@@ -187,5 +199,86 @@ class SpiderProcessManager {
   String _newId(String method, Map<String, dynamic> params) {
     final input = '${DateTime.now().microsecondsSinceEpoch}:$method:$params';
     return md5.convert(utf8.encode(input)).toString();
+  }
+
+  bool _shouldUseInMemoryMode() {
+    if (!Platform.isMacOS) return false;
+    return Platform.environment.containsKey('APP_SANDBOX_CONTAINER_ID');
+  }
+
+  Map<String, dynamic> _callInMemory(
+    String method,
+    Map<String, dynamic> params,
+  ) {
+    switch (method) {
+      case 'init':
+        return <String, dynamic>{'ok': true, 'mode': 'in-memory'};
+      case 'homeContent':
+        return <String, dynamic>{'list': <dynamic>[]};
+      case 'categoryContent':
+        return <String, dynamic>{
+          'list': <dynamic>[],
+          'page': 1,
+          'pagecount': 1,
+        };
+      case 'detailContent':
+        final idsRaw = params['ids'];
+        final ids = (idsRaw is List) ? idsRaw : const <dynamic>[];
+        return <String, dynamic>{
+          'list': <Map<String, dynamic>>[
+            <String, dynamic>{
+              'vod_id': ids.isNotEmpty ? ids.first.toString() : '',
+              'vod_name': 'Mock Video',
+            },
+          ],
+        };
+      case 'searchContent':
+        final key = (params['key'] ?? '').toString();
+        return <String, dynamic>{
+          'list': <Map<String, dynamic>>[
+            <String, dynamic>{
+              'vod_id': 'search:$key',
+              'vod_name': key.isEmpty ? 'Mock Search' : key,
+            },
+          ],
+        };
+      case 'playerContent':
+        final videoId = (params['id'] ?? '').toString();
+        if (videoId.startsWith('quark://')) {
+          return <String, dynamic>{
+            'parse': 0,
+            'jx': 0,
+            'url': '',
+            'playUrl': '',
+            'header': jsonEncode(<String, String>{
+              'User-Agent': 'MaPlayer-Spider',
+            }),
+            'quark': <String, dynamic>{
+              'shareRef': videoId.replaceFirst('quark://', ''),
+              'name': 'Mock Quark File',
+            },
+          };
+        }
+        return <String, dynamic>{
+          'parse': 0,
+          'jx': 0,
+          'url': videoId,
+          'playUrl': '',
+          'header': jsonEncode(<String, String>{
+            'User-Agent': 'MaPlayer-Spider',
+          }),
+        };
+      case 'proxyLocal':
+        return <String, dynamic>{
+          'value': <dynamic>[200, 'application/json', '{}'],
+        };
+      case 'destroy':
+        return <String, dynamic>{'ok': true};
+      default:
+        throw SpiderRuntimeException(
+          'Unsupported method: $method',
+          code: 'RUNTIME_ERROR',
+        );
+    }
   }
 }
