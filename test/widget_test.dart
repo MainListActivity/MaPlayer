@@ -1,30 +1,26 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-
 import 'package:ma_palyer/main.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  testWidgets('renders TVBox config page', (WidgetTester tester) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    await tester.pumpWidget(const MaPlayerApp());
+    await tester.pump(const Duration(milliseconds: 200));
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+    expect(find.text('Ma Player TVBox 配置'), findsOneWidget);
+    expect(find.text('兼容 TVBox 协议的配置入口'), findsOneWidget);
+  });
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
+  testWidgets('shows issue summary when draft contains invalid json', (WidgetTester tester) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      'tvbox_raw_json': '[1,2,3]',
+    });
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    await tester.pumpWidget(const MaPlayerApp());
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.textContaining('解析状态'), findsOneWidget);
+    expect(find.textContaining('TVB_JSON_ROOT_NOT_OBJECT'), findsOneWidget);
   });
 }
