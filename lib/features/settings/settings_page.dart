@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:ma_palyer/features/cloud/quark/quark_auth_service.dart';
+import 'package:ma_palyer/features/cloud/quark/quark_models.dart';
 import 'package:ma_palyer/tvbox/tvbox_config_repository.dart';
 import 'package:ma_palyer/tvbox/tvbox_models.dart';
 import 'package:ma_palyer/tvbox/tvbox_parse_report.dart';
@@ -16,11 +18,15 @@ class _SettingsPageState extends State<SettingsPage> {
   final _rawJsonController = TextEditingController();
   final _repository = TvBoxConfigRepository();
   final _parser = TvBoxParser();
+  final _quarkAuthService = QuarkAuthService();
 
   TvBoxParseReport? _report;
   String? _fetchErrorText;
   bool _isLoading = false;
   bool _isHydrating = true;
+  QuarkAuthState? _quarkAuthState;
+  QuarkQrSession? _quarkQrSession;
+  bool _quarkLoading = false;
 
   @override
   void initState() {
@@ -47,6 +53,83 @@ class _SettingsPageState extends State<SettingsPage> {
     if (!mounted) return;
     setState(() {
       _isHydrating = false;
+    });
+    await _refreshQuarkState();
+  }
+
+  Future<void> _refreshQuarkState() async {
+    final state = await _quarkAuthService.currentAuthState();
+    if (!mounted) return;
+    setState(() {
+      _quarkAuthState = state;
+    });
+  }
+
+  Future<void> _createQuarkQr() async {
+    setState(() {
+      _quarkLoading = true;
+    });
+    try {
+      final session = await _quarkAuthService.createQrSession();
+      if (!mounted) return;
+      setState(() {
+        _quarkQrSession = session;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('创建夸克二维码失败: $e')));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _quarkLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _pollQuarkLogin() async {
+    final session = _quarkQrSession;
+    if (session == null) return;
+    setState(() {
+      _quarkLoading = true;
+    });
+    try {
+      final result = await _quarkAuthService.pollQrLogin(session.sessionId);
+      if (!mounted) return;
+      if (result.isSuccess) {
+        setState(() {
+          _quarkAuthState = result.authState;
+        });
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('夸克登录成功')));
+      } else {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('扫码状态: ${result.status}')));
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('轮询夸克登录失败: $e')));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _quarkLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _logoutQuark() async {
+    await _quarkAuthService.clearAuthState();
+    if (!mounted) return;
+    setState(() {
+      _quarkAuthState = null;
+      _quarkQrSession = null;
     });
   }
 
@@ -272,6 +355,62 @@ class _SettingsPageState extends State<SettingsPage> {
                         ),
                       ),
                     ],
+                    const SizedBox(height: 12),
+                    _SectionCard(
+                      title: 'Quark Account',
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _quarkAuthState == null
+                                ? '状态: 未登录'
+                                : (_quarkAuthState!.isExpired
+                                      ? '状态: 登录过期'
+                                      : '状态: 已登录'),
+                            style: TextStyle(
+                              color: _quarkAuthState == null
+                                  ? const Color(0xFFFFD166)
+                                  : const Color(0xFF93E3A2),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 12,
+                            runSpacing: 12,
+                            children: [
+                              FilledButton.icon(
+                                onPressed: _quarkLoading
+                                    ? null
+                                    : _createQuarkQr,
+                                icon: const Icon(Icons.qr_code_2_outlined),
+                                label: Text(
+                                  _quarkLoading ? '处理中...' : '生成扫码二维码',
+                                ),
+                              ),
+                              OutlinedButton.icon(
+                                onPressed: _quarkLoading
+                                    ? null
+                                    : _pollQuarkLogin,
+                                icon: const Icon(Icons.refresh),
+                                label: const Text('轮询扫码结果'),
+                              ),
+                              OutlinedButton.icon(
+                                onPressed: _logoutQuark,
+                                icon: const Icon(Icons.logout),
+                                label: const Text('退出登录'),
+                              ),
+                            ],
+                          ),
+                          if (_quarkQrSession != null) ...[
+                            const SizedBox(height: 8),
+                            SelectableText(
+                              '二维码地址: ${_quarkQrSession!.qrCodeUrl}',
+                              style: const TextStyle(color: Colors.white70),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
                     const SizedBox(height: 12),
                     _SectionCard(
                       title: 'Cloud Drives',

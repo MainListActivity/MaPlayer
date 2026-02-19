@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:ma_palyer/app/app_route.dart';
 import 'package:ma_palyer/tvbox/tvbox_config_repository.dart';
 
@@ -29,18 +28,12 @@ class AppShell extends StatelessWidget {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('请先完成 TVBox 配置')));
-      Navigator.pushReplacementNamed(
-        context,
-        AppRoutes.settings,
-      );
+      Navigator.pushReplacementNamed(context, AppRoutes.settings);
       return;
     }
 
     if (!context.mounted) return;
-    Navigator.pushReplacementNamed(
-      context,
-      AppRoutes.pathFor(targetRoute),
-    );
+    Navigator.pushReplacementNamed(context, AppRoutes.pathFor(targetRoute));
   }
 
   void _onBackTap(BuildContext context) {
@@ -63,18 +56,7 @@ class AppShell extends StatelessWidget {
                 icon: const Icon(Icons.arrow_back),
                 onPressed: () => _onBackTap(context),
               ),
-        title: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            SvgPicture.asset(
-              'logo/ma_player_logo.svg',
-              width: 24,
-              height: 24,
-            ),
-            const SizedBox(width: 8),
-            const Text('Ma Player'),
-          ],
-        ),
+        title: const Text('Ma Player'),
         centerTitle: false,
         actions: AppRoutes.menuItems.map((item) {
           final selected = item.route == currentRoute;

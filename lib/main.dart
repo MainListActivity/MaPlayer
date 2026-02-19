@@ -4,10 +4,13 @@ import 'package:ma_palyer/app/app_route.dart';
 import 'package:ma_palyer/app/app_shell.dart';
 import 'package:ma_palyer/features/home/home_page.dart';
 import 'package:ma_palyer/features/movies/movies_page.dart';
+import 'package:ma_palyer/features/player/player_page.dart';
 import 'package:ma_palyer/features/settings/settings_page.dart';
 import 'package:ma_palyer/features/tv_shows/tv_shows_page.dart';
+import 'package:media_kit/media_kit.dart';
 
 void main() {
+  MediaKit.ensureInitialized();
   runApp(const MaPlayerApp());
 }
 
@@ -63,6 +66,12 @@ class MaPlayerApp extends StatelessWidget {
           settings: settings,
           currentRoute: AppRoute.settings,
           child: const SettingsPage(),
+        );
+      case AppRoutes.player:
+        return _buildMenuRoute(
+          settings: settings,
+          currentRoute: AppRoute.player,
+          child: const PlayerPage(),
         );
       default:
         return MaterialPageRoute<void>(

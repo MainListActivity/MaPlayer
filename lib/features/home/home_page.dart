@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:ma_palyer/app/app_route.dart';
 
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return const _SkeletonPage(
+    return _SkeletonPage(
       title: 'Home',
-      subtitle: '首页骨架已就绪，后续可接入推荐内容与搜索。',
+      subtitle: '首页骨架已就绪，可直接进入 Playback Debug 验证主链路。',
       icon: Icons.home_outlined,
     );
   }
@@ -57,6 +58,14 @@ class _SkeletonPage extends StatelessWidget {
                       Text(
                         subtitle,
                         style: const TextStyle(color: Colors.white70),
+                      ),
+                      const SizedBox(height: 12),
+                      FilledButton.icon(
+                        onPressed: () {
+                          Navigator.pushNamed(context, AppRoutes.player);
+                        },
+                        icon: const Icon(Icons.play_circle_outline),
+                        label: const Text('进入 Playback Debug'),
                       ),
                     ],
                   ),

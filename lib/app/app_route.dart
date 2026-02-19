@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-enum AppRoute { home, movies, tvShows, settings, bootstrap }
+enum AppRoute { home, movies, tvShows, settings, player, bootstrap }
 
 class AppMenuItem {
   const AppMenuItem({
@@ -22,6 +22,7 @@ class AppRoutes {
   static const movies = '/movies';
   static const tvShows = '/tv-shows';
   static const settings = '/settings';
+  static const player = '/player';
 
   static const menuItems = <AppMenuItem>[
     AppMenuItem(
@@ -60,6 +61,8 @@ class AppRoutes {
         return AppRoute.tvShows;
       case settings:
         return AppRoute.settings;
+      case player:
+        return AppRoute.player;
       default:
         return AppRoute.bootstrap;
     }
@@ -72,6 +75,7 @@ class AppRoutes {
       AppRoute.movies => movies,
       AppRoute.tvShows => tvShows,
       AppRoute.settings => settings,
+      AppRoute.player => player,
     };
   }
 }
