@@ -105,9 +105,21 @@ class _HomePageState extends State<HomePage> {
 
   function extractCoverUrl(imgNode) {
     if (!imgNode) return '';
-    const srcSet = imgNode.currentSrc || imgNode.getAttribute('data-src') || imgNode.getAttribute('data-original') || imgNode.getAttribute('data-lazy-src') || imgNode.getAttribute('src') || '';
+    const isLazy = !!(imgNode.classList && imgNode.classList.contains('lazyload'));
+    const srcSet = isLazy
+      ? (imgNode.getAttribute('data-src') || imgNode.getAttribute('data-original') || imgNode.getAttribute('data-lazy-src') || '')
+      : (imgNode.currentSrc || imgNode.getAttribute('data-src') || imgNode.getAttribute('data-original') || imgNode.getAttribute('data-lazy-src') || imgNode.getAttribute('src') || '');
     if (!srcSet) return '';
     const first = srcSet.split(',')[0].trim().split(' ')[0].trim();
+    return toAbsolute(first);
+  }
+
+  function extractDetailCoverFromDataSrc() {
+    const detailImgNode = document.querySelector('.module-item-pic img.lazyload, .myui-content__thumb img.lazyload, .stui-content__thumb img.lazyload, img.lazyload');
+    if (!detailImgNode) return '';
+    const dataSrc = detailImgNode.getAttribute('data-src') || detailImgNode.getAttribute('data-original') || detailImgNode.getAttribute('data-lazy-src') || '';
+    if (!dataSrc) return '';
+    const first = dataSrc.split(',')[0].trim().split(' ')[0].trim();
     return toAbsolute(first);
   }
 
@@ -115,8 +127,9 @@ class _HomePageState extends State<HomePage> {
     const card = a.closest('article, .post, .item, .entry, li, .module-item, .module-info, .myui-content__detail, .stui-content__detail') || document.body;
     const titleNode = card.querySelector('h1, h2, h3, .title, .module-item-title, .entry-title, .page-title, .video-info-header h1, .myui-content__detail .title') || a;
     const introNode = card.querySelector('.video-info-content, .module-info-introduction-content, .desc, .module-item-note, .entry-content, .myui-content__detail .data, .stui-content__detail p, p');
+    const detailCover = extractDetailCoverFromDataSrc();
     const imgNode = card.querySelector('img[data-src], img[data-original], img[src], .module-item-pic img, .myui-content__thumb img, .stui-content__thumb img');
-    const cover = extractCoverUrl(imgNode);
+    const cover = detailCover || extractCoverUrl(imgNode);
     const payload = {
       shareUrl: toAbsolute(a.getAttribute('href') || a.href || ''),
       pageUrl: location.href,

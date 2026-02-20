@@ -24,10 +24,10 @@ void main() {
     await repo.upsertByShareUrl(
       const PlayHistoryItem(
         shareUrl: 'https://pan.quark.cn/s/a',
-        pageUrl: 'https://www.wogg.net/x',
+        pageUrl: 'https://www.wogg.net/v/1',
         title: 'A-2',
-        coverUrl: '',
-        coverHeaders: <String, String>{'Referer': 'https://www.wogg.net/x'},
+        coverUrl: 'https://img.wogg.net/new-cover.jpg',
+        coverHeaders: <String, String>{'Referer': 'https://www.wogg.net/v/1'},
         intro: '',
         showDirName: 'A',
         updatedAtEpochMs: 2,
@@ -54,7 +54,9 @@ void main() {
 
     final a = await repo.findByShareUrl('https://pan.quark.cn/s/a');
     expect(a?.title, 'A-2');
+    expect(a?.pageUrl, 'https://www.wogg.net/v/1');
+    expect(a?.coverUrl, 'https://img.wogg.net/new-cover.jpg');
     expect(a?.lastEpisodeFileId, 'f1');
-    expect(a?.coverHeaders['Referer'], 'https://www.wogg.net/x');
+    expect(a?.coverHeaders['Referer'], 'https://www.wogg.net/v/1');
   });
 }

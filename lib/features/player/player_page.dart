@@ -388,8 +388,12 @@ class _PlayerPageState extends State<PlayerPage> {
           // Back button + Logo (tappable as a unit)
           InkWell(
             borderRadius: BorderRadius.circular(8),
-            onTap: () {
-              Navigator.pushReplacementNamed(context, AppRoutes.home);
+            onTap: () async {
+              final navigator = Navigator.of(context);
+              final popped = await navigator.maybePop();
+              if (!popped && mounted) {
+                navigator.pushReplacementNamed(AppRoutes.home);
+              }
             },
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
