@@ -139,7 +139,7 @@ class _HistoryPageState extends State<HistoryPage> {
                     gridDelegate:
                         const SliverGridDelegateWithMaxCrossAxisExtent(
                           maxCrossAxisExtent: 240,
-                          childAspectRatio: 0.56,
+                          childAspectRatio: 0.52,
                           crossAxisSpacing: 16,
                           mainAxisSpacing: 16,
                         ),
@@ -189,14 +189,20 @@ class _HistoryPageState extends State<HistoryPage> {
                                         ),
                                 ),
                               ),
-                              Expanded(
+                              SizedBox(
+                                height: 84,
                                 child: Container(
                                   color: const Color(0xFF162236),
                                   child: Padding(
-                                    padding: const EdgeInsets.all(12),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 10,
+                                    ),
                                     child: Column(
                                       crossAxisAlignment:
                                           CrossAxisAlignment.start,
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
                                       children: [
                                         Text(
                                           item.title,
@@ -207,7 +213,7 @@ class _HistoryPageState extends State<HistoryPage> {
                                             fontSize: 14,
                                           ),
                                         ),
-                                        const SizedBox(height: 4),
+                                        const SizedBox(height: 6),
                                         Text(
                                           item.lastEpisodeName ?? '点击选集',
                                           maxLines: 1,
