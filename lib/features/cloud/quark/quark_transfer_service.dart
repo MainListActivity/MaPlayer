@@ -6,25 +6,20 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:ma_palyer/features/cloud/quark/quark_auth_service.dart';
 import 'package:ma_palyer/features/cloud/quark/quark_models.dart';
-import 'package:ma_palyer/features/cloud/quark/quark_playback_cookie_provider.dart';
 
 class QuarkTransferService {
   QuarkTransferService({
     required QuarkAuthService authService,
     http.Client? httpClient,
     Uri? baseUri,
-    QuarkPlaybackCookieProvider? playbackCookieProvider,
   }) : _authService = authService,
        _http = httpClient ?? http.Client(),
        _baseUri =
-           baseUri ?? Uri.parse('https://drive-pc.quark.cn/1/clouddrive/'),
-       _playbackCookieProvider =
-           playbackCookieProvider ?? QuarkHeadlessWebViewCookieProvider();
+           baseUri ?? Uri.parse('https://drive-pc.quark.cn/1/clouddrive/');
 
   final QuarkAuthService _authService;
   final http.Client _http;
   final Uri _baseUri;
-  final QuarkPlaybackCookieProvider _playbackCookieProvider;
   static const _desktopChromeUa =
       'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
       'AppleWebKit/537.36 (KHTML, like Gecko) '
@@ -359,15 +354,6 @@ class QuarkTransferService {
       if (url.isEmpty) {
         throw QuarkException('Playable URL missing', code: 'PLAYABLE_PAYLOAD');
       }
-      final webViewResolved = await _playbackCookieProvider.resolveForVideo(
-        savedFileId,
-      );
-      final webViewCookie = webViewResolved?.cookieHeader;
-      final webViewM3u8 = webViewResolved?.m3u8Url?.trim() ?? '';
-      final playableUrl = webViewM3u8.isNotEmpty ? webViewM3u8 : url;
-      if (webViewM3u8.isNotEmpty) {
-        _logTransfer('resolve playable: using m3u8 from webview=$webViewM3u8');
-      }
       final latestVideoAuth = _extractVideoAuthFromSetCookie(response.headers);
       if (latestVideoAuth != null && latestVideoAuth.isNotEmpty) {
         _logTransfer(
@@ -378,12 +364,11 @@ class QuarkTransferService {
       final headers = _mergePlayableHeaders(
         auth: auth,
         resolved: _extractPlayableHeaders(data),
-        webViewCookie: webViewCookie,
         latestVideoAuth: latestVideoAuth,
       );
 
       return QuarkPlayableFile(
-        url: playableUrl,
+        url: url,
         headers: headers,
         subtitle: data['subtitle']?.toString(),
       );
@@ -1028,17 +1013,14 @@ class QuarkTransferService {
   Map<String, String> _mergePlayableHeaders({
     required QuarkAuthState auth,
     required Map<String, String> resolved,
-    String? webViewCookie,
     String? latestVideoAuth,
   }) {
     final merged = Map<String, String>.from(resolved);
     _setHeaderCaseInsensitive(merged, 'User-Agent', _desktopChromeUa);
+    _setHeaderCaseInsensitive(merged, 'Referer', 'https://pan.quark.cn/');
     final authCookie = auth.cookie?.trim() ?? '';
     final resolvedCookie = _getHeaderCaseInsensitive(merged, 'Cookie')?.trim();
-    var cookie = webViewCookie?.trim() ?? '';
-    if (cookie.isEmpty) {
-      cookie = authCookie.isNotEmpty ? authCookie : (resolvedCookie ?? '');
-    }
+    var cookie = authCookie.isNotEmpty ? authCookie : (resolvedCookie ?? '');
     if (latestVideoAuth != null && latestVideoAuth.isNotEmpty) {
       cookie = _upsertCookie(cookie, 'Video-Auth', latestVideoAuth);
     }
