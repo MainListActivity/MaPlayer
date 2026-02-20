@@ -138,8 +138,8 @@ class _HistoryPageState extends State<HistoryPage> {
                 : GridView.builder(
                     gridDelegate:
                         const SliverGridDelegateWithMaxCrossAxisExtent(
-                          maxCrossAxisExtent: 260,
-                          childAspectRatio: 16 / 12,
+                          maxCrossAxisExtent: 240,
+                          childAspectRatio: 0.56,
                           crossAxisSpacing: 16,
                           mainAxisSpacing: 16,
                         ),
@@ -153,12 +153,14 @@ class _HistoryPageState extends State<HistoryPage> {
                           decoration: BoxDecoration(
                             color: const Color(0xFF1C2940),
                             borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: const Color(0xFF2A3B5E)),
                           ),
                           clipBehavior: Clip.antiAlias,
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
-                              Expanded(
+                              AspectRatio(
+                                aspectRatio: 270 / 405,
                                 child: Container(
                                   color: const Color(0xFF101622),
                                   child: item.coverUrl.isNotEmpty
@@ -187,31 +189,37 @@ class _HistoryPageState extends State<HistoryPage> {
                                         ),
                                 ),
                               ),
-                              Padding(
-                                padding: const EdgeInsets.all(12),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      item.title,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 14,
-                                      ),
+                              Expanded(
+                                child: Container(
+                                  color: const Color(0xFF162236),
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(12),
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          item.title,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 14,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          item.lastEpisodeName ?? '点击选集',
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            color: Colors.white70,
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                      ],
                                     ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      item.lastEpisodeName ?? '点击选集',
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
-                                        color: Colors.white70,
-                                        fontSize: 12,
-                                      ),
-                                    ),
-                                  ],
+                                  ),
                                 ),
                               ),
                             ],
