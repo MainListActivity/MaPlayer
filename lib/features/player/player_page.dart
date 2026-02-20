@@ -257,6 +257,146 @@ class _PlayerPageState extends State<PlayerPage> {
     }
   }
 
+  void _showEpisodesDialog() {
+    showGeneralDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'Dismiss',
+      barrierColor: Colors.black54,
+      transitionDuration: const Duration(milliseconds: 300),
+      useRootNavigator: true,
+      pageBuilder: (dialogContext, animation, secondaryAnimation) {
+        return Align(
+          alignment: Alignment.centerRight,
+          child: Material(
+            color: const Color(0xFF1A2332),
+            child: SizedBox(
+              width: 400,
+              height: double.infinity,
+              child: SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            '播放详情',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(
+                              Icons.close,
+                              color: Colors.white70,
+                            ),
+                            onPressed: () => Navigator.of(dialogContext).pop(),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      Expanded(
+                        child: _buildSidebarArea(
+                          onEpisodeSelected: () {
+                            Navigator.of(dialogContext).pop();
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+      transitionBuilder: (context, animation, secondaryAnimation, child) {
+        return SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(1, 0),
+            end: Offset.zero,
+          ).animate(animation),
+          child: child,
+        );
+      },
+    );
+  }
+
+  List<Widget> _buildTopButtonBar() {
+    return [
+      if (_currentPlayingEpisode != null)
+        Container(
+          margin: const EdgeInsets.only(top: 16, left: 16),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: const Color(0xFF1A2332).withOpacity(0.85),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: const Color(0xFF2E3B56)),
+          ),
+          child: Text(
+            '${_currentPlayingEpisode!.displayTitle}',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ),
+      const Spacer(),
+    ];
+  }
+
+  Widget _buildEpisodesButton() {
+    return InkWell(
+      onTap: _showEpisodesDialog,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF47B25).withOpacity(0.2),
+          borderRadius: BorderRadius.circular(4),
+          border: Border.all(color: const Color(0xFFF47B25).withOpacity(0.5)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: const [
+            Text(
+              '选集',
+              style: TextStyle(
+                color: Color(0xFFF47B25),
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            SizedBox(width: 4),
+            Icon(
+              Icons.format_list_bulleted,
+              color: Color(0xFFF47B25),
+              size: 14,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _buildBottomButtonBar() {
+    return [
+      const MaterialDesktopSkipPreviousButton(),
+      const MaterialDesktopPlayOrPauseButton(),
+      const MaterialDesktopSkipNextButton(),
+      const MaterialDesktopVolumeButton(),
+      const MaterialDesktopPositionIndicator(),
+      const Spacer(),
+      _buildEpisodesButton(),
+      const Spacer(),
+      const MaterialDesktopFullscreenButton(),
+    ];
+  }
+
   Widget _buildTopNavigation() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
@@ -356,7 +496,17 @@ class _PlayerPageState extends State<PlayerPage> {
               ],
             ),
             clipBehavior: Clip.antiAlias,
-            child: Video(controller: _videoController),
+            child: MaterialDesktopVideoControlsTheme(
+              normal: MaterialDesktopVideoControlsThemeData(
+                topButtonBar: _buildTopButtonBar(),
+                bottomButtonBar: _buildBottomButtonBar(),
+              ),
+              fullscreen: MaterialDesktopVideoControlsThemeData(
+                topButtonBar: _buildTopButtonBar(),
+                bottomButtonBar: _buildBottomButtonBar(),
+              ),
+              child: Video(controller: _videoController),
+            ),
           ),
         ),
         const SizedBox(height: 16),
@@ -367,10 +517,16 @@ class _PlayerPageState extends State<PlayerPage> {
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: const Color(0xFF232F48)),
           ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          child: Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            runSpacing: 12,
+            spacing: 12,
             children: [
-              Row(
+              Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
                   OutlinedButton.icon(
                     onPressed: _showResolutionPicker,
@@ -388,7 +544,6 @@ class _PlayerPageState extends State<PlayerPage> {
                       backgroundColor: const Color(0xFF101622),
                     ),
                   ),
-                  const SizedBox(width: 12),
                   TextButton.icon(
                     onPressed: () {},
                     icon: const Icon(
@@ -402,7 +557,8 @@ class _PlayerPageState extends State<PlayerPage> {
                   ),
                 ],
               ),
-              Row(
+              Wrap(
+                spacing: 4,
                 children: [
                   IconButton(
                     icon: const Icon(
@@ -434,7 +590,7 @@ class _PlayerPageState extends State<PlayerPage> {
     );
   }
 
-  Widget _buildSidebarArea() {
+  Widget _buildSidebarArea({VoidCallback? onEpisodeSelected}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -572,11 +728,13 @@ class _PlayerPageState extends State<PlayerPage> {
                                 onTap: () {
                                   if (episodesInGroup.isNotEmpty &&
                                       !isPlaying) {
+                                    if (onEpisodeSelected != null) {
+                                      onEpisodeSelected();
+                                    }
                                     _playParsedEpisode(
                                       PreparedEpisodeSelection(
                                         request: widget.args!.shareRequest!,
-                                        showDirName:
-                                            '', // not fully needed here
+                                        showDirName: '',
                                         episodes: _allEpisodes
                                             .map(
                                               (e) => EpisodeCandidate(
@@ -701,16 +859,23 @@ class _PlayerPageState extends State<PlayerPage> {
           children: [
             _buildTopNavigation(),
             Expanded(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(flex: 7, child: _buildVideoPlayerArea()),
-                    const SizedBox(width: 24),
-                    SizedBox(width: 400, child: _buildSidebarArea()),
-                  ],
-                ),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final showSidebar = constraints.maxWidth >= 1000;
+                  return Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(child: _buildVideoPlayerArea()),
+                        if (showSidebar) ...[
+                          const SizedBox(width: 24),
+                          SizedBox(width: 400, child: _buildSidebarArea()),
+                        ],
+                      ],
+                    ),
+                  );
+                },
               ),
             ),
           ],
