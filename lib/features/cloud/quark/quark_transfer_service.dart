@@ -79,14 +79,19 @@ class QuarkTransferService {
       stoken: stoken,
       pdirFid: '0',
     );
-    final videos = all.where((e) => !e.isDirectory && _looksLikeVideo(e.fileName)).toList();
+    final videos = all
+        .where((e) => !e.isDirectory && _looksLikeVideo(e.fileName))
+        .toList();
     videos.sort((a, b) => _naturalCompare(a.fileName, b.fileName));
     return videos;
   }
 
   Future<void> clearFolder(String folderId) async {
     final files = await listFilesInFolder(folderId);
-    final deleteIds = files.where((e) => !e.isDirectory).map((e) => e.fileId).toList();
+    final deleteIds = files
+        .where((e) => !e.isDirectory)
+        .map((e) => e.fileId)
+        .toList();
     if (deleteIds.isEmpty) return;
     await _deleteFiles(deleteIds);
   }
@@ -148,7 +153,9 @@ class QuarkTransferService {
         code: 'SAVE_FAILED',
       );
     }
-    final data = Map<String, dynamic>.from(body['data'] as Map? ?? <String, dynamic>{});
+    final data = Map<String, dynamic>.from(
+      body['data'] as Map? ?? <String, dynamic>{},
+    );
     final taskId =
         data['task_id']?.toString() ??
         data['taskId']?.toString() ??
@@ -163,7 +170,11 @@ class QuarkTransferService {
     final auth = await _authService.ensureValidToken();
     var retryIndex = 0;
     while (retryIndex < 20) {
-      final uri = _buildTaskUri(_baseUri, taskId: taskId, retryIndex: retryIndex);
+      final uri = _buildTaskUri(
+        _baseUri,
+        taskId: taskId,
+        retryIndex: retryIndex,
+      );
       final response = await _http.get(uri, headers: _authHeaders(auth));
       _logTransfer(
         'task poll: uri=$uri status=${response.statusCode} body=${_snippet(response.body)}',
@@ -269,7 +280,8 @@ class QuarkTransferService {
     final data = Map<String, dynamic>.from(
       body['data'] as Map? ?? <String, dynamic>{},
     );
-    final fileId = data['fileId']?.toString() ?? data['taskId']?.toString() ?? '';
+    final fileId =
+        data['fileId']?.toString() ?? data['taskId']?.toString() ?? '';
     final fileName =
         data['fileName']?.toString() ?? shareRef.fileName ?? 'unknown';
     if (fileId.isEmpty) {
@@ -302,35 +314,74 @@ class QuarkTransferService {
 
   Future<QuarkPlayableFile> resolvePlayableFile(String savedFileId) async {
     final auth = await _authService.ensureValidToken();
-    final uri = _baseUri.resolve('file/play?file_id=$savedFileId');
-    final response = await _http.get(uri, headers: _authHeaders(auth));
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw QuarkException(
-        'Resolve playable file failed',
-        code: 'PLAYABLE_FAILED',
+    http.Response? lastResponse;
+    Uri? lastUri;
+
+    for (final base in _baseUriCandidates) {
+      final uri = _buildPlayV2Uri(base);
+      final response = await _http.post(
+        uri,
+        headers: _authHeaders(auth),
+        body: jsonEncode(<String, dynamic>{
+          'fid': savedFileId,
+          'resolutions': 'normal,low,high,super,2k,4k',
+          'supports': 'fmp4,m3u8',
+        }),
+      );
+      lastResponse = response;
+      lastUri = uri;
+      _logTransfer(
+        'resolve playable: uri=$uri status=${response.statusCode} body=${_snippet(response.body)}',
+      );
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        continue;
+      }
+
+      final body = jsonDecode(response.body) as Map<String, dynamic>;
+      final code = body['code'];
+      if (code is num && code.toInt() != 0) {
+        continue;
+      }
+
+      final data = Map<String, dynamic>.from(
+        body['data'] as Map? ?? <String, dynamic>{},
+      );
+      final url = _pickPlayableUrlFromVideoList(data);
+      if (url.isEmpty) {
+        throw QuarkException('Playable URL missing', code: 'PLAYABLE_PAYLOAD');
+      }
+
+      final headers = _mergePlayableHeaders(
+        auth: auth,
+        resolved: _extractPlayableHeaders(data),
+      );
+
+      return QuarkPlayableFile(
+        url: url,
+        headers: headers,
+        subtitle: data['subtitle']?.toString(),
       );
     }
-    final body = jsonDecode(response.body) as Map<String, dynamic>;
-    final data = Map<String, dynamic>.from(
-      body['data'] as Map? ?? <String, dynamic>{},
-    );
-    final url = data['url']?.toString() ?? '';
-    if (url.isEmpty) {
-      throw QuarkException('Playable URL missing', code: 'PLAYABLE_PAYLOAD');
+
+    if (lastResponse != null &&
+        lastResponse.statusCode >= 200 &&
+        lastResponse.statusCode < 300) {
+      try {
+        final body = jsonDecode(lastResponse.body) as Map<String, dynamic>;
+        throw QuarkException(
+          'Resolve playable file failed(code=${body['code']}): ${body['message']}',
+          code: 'PLAYABLE_FAILED',
+        );
+      } catch (_) {}
     }
 
-    final headers = <String, String>{};
-    final headerJson = data['headers'];
-    if (headerJson is Map) {
-      for (final entry in headerJson.entries) {
-        headers[entry.key.toString()] = entry.value.toString();
-      }
-    }
-
-    return QuarkPlayableFile(
-      url: url,
-      headers: headers,
-      subtitle: data['subtitle']?.toString(),
+    throw QuarkException(
+      'Resolve playable file failed '
+      '(uri=${lastUri?.toString() ?? 'unknown'}, '
+      'status=${lastResponse?.statusCode ?? -1}, '
+      'body=${_snippet(lastResponse?.body ?? '')})',
+      code: 'PLAYABLE_FAILED',
     );
   }
 
@@ -378,7 +429,11 @@ class QuarkTransferService {
     var currentFolderId = '0';
     var currentName = '/';
     for (final part in parts) {
-      final existing = await _findChildFolderByName(auth, currentFolderId, part);
+      final existing = await _findChildFolderByName(
+        auth,
+        currentFolderId,
+        part,
+      );
       if (existing != null) {
         currentFolderId = existing.fileId;
         currentName = existing.fileName;
@@ -434,11 +489,21 @@ class QuarkTransferService {
       _logTransfer(
         'mkdir: uri=$uri status=${response.statusCode} body=${_snippet(response.body)}',
       );
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        continue;
+      Map<String, dynamic>? body;
+      try {
+        final decoded = jsonDecode(response.body);
+        if (decoded is Map<String, dynamic>) {
+          body = decoded;
+        } else if (decoded is Map) {
+          body = Map<String, dynamic>.from(decoded);
+        }
+      } catch (_) {
+        // Keep body null when response is not valid json.
       }
-      final body = jsonDecode(response.body) as Map<String, dynamic>;
-      final code = body['code'];
+      final status = response.statusCode;
+      final isSuccessStatus = status >= 200 && status < 300;
+
+      final code = body?['code'];
       if (code is num && code.toInt() == 23008) {
         final existing = await _findChildFolderByName(
           auth,
@@ -448,6 +513,12 @@ class QuarkTransferService {
         if (existing != null) {
           return existing;
         }
+        continue;
+      }
+      if (!isSuccessStatus) {
+        continue;
+      }
+      if (body == null) {
         continue;
       }
       if (code is num && code.toInt() != 0) {
@@ -541,7 +612,10 @@ class QuarkTransferService {
     final uri = _buildShareTokenUri(_baseUri);
     final response = await _http.post(
       uri,
-      headers: <String, String>{..._baseHeaders(), 'Content-Type': 'application/json'},
+      headers: <String, String>{
+        ..._baseHeaders(),
+        'Content-Type': 'application/json',
+      },
       body: jsonEncode(<String, dynamic>{'pwd_id': pwdId, 'passcode': ''}),
     );
     _logTransfer(
@@ -558,10 +632,15 @@ class QuarkTransferService {
         code: 'SHARE_TOKEN_FAILED',
       );
     }
-    final data = Map<String, dynamic>.from(body['data'] as Map? ?? <String, dynamic>{});
+    final data = Map<String, dynamic>.from(
+      body['data'] as Map? ?? <String, dynamic>{},
+    );
     final stoken = data['stoken']?.toString() ?? '';
     if (stoken.isEmpty) {
-      throw QuarkException('Share token payload invalid', code: 'SHARE_TOKEN_PAYLOAD');
+      throw QuarkException(
+        'Share token payload invalid',
+        code: 'SHARE_TOKEN_PAYLOAD',
+      );
     }
     return stoken;
   }
@@ -577,7 +656,11 @@ class QuarkTransferService {
     while (queue.isNotEmpty) {
       final current = queue.removeAt(0);
       if (!visited.add(current)) continue;
-      final list = await _listShareDir(pwdId: pwdId, stoken: stoken, pdirFid: current);
+      final list = await _listShareDir(
+        pwdId: pwdId,
+        stoken: stoken,
+        pdirFid: current,
+      );
       for (final item in list) {
         result.add(item);
         if (item.isDirectory) {
@@ -608,7 +691,10 @@ class QuarkTransferService {
         'share detail: uri=$uri status=${response.statusCode} body=${_snippet(response.body)}',
       );
       if (response.statusCode < 200 || response.statusCode >= 300) {
-        throw QuarkException('Share detail failed', code: 'SHARE_DETAIL_FAILED');
+        throw QuarkException(
+          'Share detail failed',
+          code: 'SHARE_DETAIL_FAILED',
+        );
       }
       final body = jsonDecode(response.body) as Map<String, dynamic>;
       final code = body['code'];
@@ -618,27 +704,33 @@ class QuarkTransferService {
           code: 'SHARE_DETAIL_FAILED',
         );
       }
-      final data = Map<String, dynamic>.from(body['data'] as Map? ?? <String, dynamic>{});
+      final data = Map<String, dynamic>.from(
+        body['data'] as Map? ?? <String, dynamic>{},
+      );
       final rawList = data['list'];
       if (rawList is! List || rawList.isEmpty) {
         break;
       }
-      final entries = rawList.whereType<Map>().map((e) {
-        final item = Map<String, dynamic>.from(e);
-        final fid = item['fid']?.toString() ?? '';
-        final name = item['file_name']?.toString() ?? '';
-        final token = item['share_fid_token']?.toString() ?? '';
-        final parent = item['pdir_fid']?.toString() ?? pdirFid;
-        final isDir = item['dir'] == true || item['file'] == false;
-        return QuarkShareFileEntry(
-          fid: fid,
-          fileName: name,
-          pdirFid: parent,
-          shareFidToken: token,
-          isDirectory: isDir,
-          updatedAtEpochMs: (item['updated_at'] as num?)?.toInt(),
-        );
-      }).where((e) => e.fid.isNotEmpty && e.fileName.isNotEmpty).toList();
+      final entries = rawList
+          .whereType<Map>()
+          .map((e) {
+            final item = Map<String, dynamic>.from(e);
+            final fid = item['fid']?.toString() ?? '';
+            final name = item['file_name']?.toString() ?? '';
+            final token = item['share_fid_token']?.toString() ?? '';
+            final parent = item['pdir_fid']?.toString() ?? pdirFid;
+            final isDir = item['dir'] == true || item['file'] == false;
+            return QuarkShareFileEntry(
+              fid: fid,
+              fileName: name,
+              pdirFid: parent,
+              shareFidToken: token,
+              isDirectory: isDir,
+              updatedAtEpochMs: (item['updated_at'] as num?)?.toInt(),
+            );
+          })
+          .where((e) => e.fid.isNotEmpty && e.fileName.isNotEmpty)
+          .toList();
       list.addAll(entries);
       if (entries.length < 50) {
         break;
@@ -730,13 +822,15 @@ class QuarkTransferService {
   }
 
   Uri _buildShareTokenUri(Uri base) {
-    return base.resolve('share/sharepage/token').replace(
-      queryParameters: <String, String>{
-        'pr': 'ucpro',
-        'fr': 'pc',
-        'uc_param_str': '',
-      },
-    );
+    return base
+        .resolve('share/sharepage/token')
+        .replace(
+          queryParameters: <String, String>{
+            'pr': 'ucpro',
+            'fr': 'pc',
+            'uc_param_str': '',
+          },
+        );
   }
 
   Uri _buildShareDetailUri(
@@ -746,46 +840,64 @@ class QuarkTransferService {
     required String pdirFid,
     required int page,
   }) {
-    return base.resolve('share/sharepage/detail').replace(
-      queryParameters: <String, String>{
-        'pr': 'ucpro',
-        'fr': 'pc',
-        'uc_param_str': '',
-        'pwd_id': pwdId,
-        'stoken': stoken,
-        'pdir_fid': pdirFid,
-        'force': '0',
-        '_page': '$page',
-        '_size': '50',
-        '_fetch_banner': '0',
-        '_fetch_share': '0',
-        '_fetch_total': '1',
-        '_sort': 'file_type:asc,updated_at:desc',
-      },
-    );
+    return base
+        .resolve('share/sharepage/detail')
+        .replace(
+          queryParameters: <String, String>{
+            'pr': 'ucpro',
+            'fr': 'pc',
+            'uc_param_str': '',
+            'pwd_id': pwdId,
+            'stoken': stoken,
+            'pdir_fid': pdirFid,
+            'force': '0',
+            '_page': '$page',
+            '_size': '50',
+            '_fetch_banner': '0',
+            '_fetch_share': '0',
+            '_fetch_total': '1',
+            '_sort': 'file_type:asc,updated_at:desc',
+          },
+        );
   }
 
   Uri _buildShareSaveUri(Uri base) {
-    return base.resolve('share/sharepage/save').replace(
-      queryParameters: <String, String>{
-        'pr': 'ucpro',
-        'fr': 'pc',
-        'uc_param_str': '',
-        'app': 'clouddrive',
-        '__dt': '${(Random().nextInt(4) + 1) * 60 * 1000}',
-        '__t': '${DateTime.now().millisecondsSinceEpoch}',
-      },
-    );
+    return base
+        .resolve('share/sharepage/save')
+        .replace(
+          queryParameters: <String, String>{
+            'pr': 'ucpro',
+            'fr': 'pc',
+            'uc_param_str': '',
+            'app': 'clouddrive',
+            '__dt': '${(Random().nextInt(4) + 1) * 60 * 1000}',
+            '__t': '${DateTime.now().millisecondsSinceEpoch}',
+          },
+        );
   }
 
   Uri _buildDeleteUri(Uri base) {
-    return base.resolve('file/delete').replace(
-      queryParameters: <String, String>{
-        'pr': 'ucpro',
-        'fr': 'pc',
-        'uc_param_str': '',
-      },
-    );
+    return base
+        .resolve('file/delete')
+        .replace(
+          queryParameters: <String, String>{
+            'pr': 'ucpro',
+            'fr': 'pc',
+            'uc_param_str': '',
+          },
+        );
+  }
+
+  Uri _buildPlayV2Uri(Uri base) {
+    return base
+        .resolve('file/v2/play')
+        .replace(
+          queryParameters: <String, String>{
+            'pr': 'ucpro',
+            'fr': 'pc',
+            'uc_param_str': '',
+          },
+        );
   }
 
   Uri _buildTaskUri(
@@ -793,15 +905,17 @@ class QuarkTransferService {
     required String taskId,
     required int retryIndex,
   }) {
-    return base.resolve('task').replace(
-      queryParameters: <String, String>{
-        'pr': 'ucpro',
-        'fr': 'pc',
-        'uc_param_str': '',
-        'task_id': taskId,
-        'retry_index': '$retryIndex',
-      },
-    );
+    return base
+        .resolve('task')
+        .replace(
+          queryParameters: <String, String>{
+            'pr': 'ucpro',
+            'fr': 'pc',
+            'uc_param_str': '',
+            'task_id': taskId,
+            'retry_index': '$retryIndex',
+          },
+        );
   }
 
   Map<String, String> _baseHeaders() => <String, String>{
@@ -823,5 +937,93 @@ class QuarkTransferService {
       }
     }
     return null;
+  }
+
+  String _pickPlayableUrlFromVideoList(Map<String, dynamic> data) {
+    final list = data['video_list'];
+    if (list is! List) return '';
+    final videos = list.whereType<Map>().map(Map<String, dynamic>.from).toList();
+    if (videos.isEmpty) return '';
+
+    const preferred = <String>['super', 'high', 'normal', 'low', '2k', '4k'];
+    for (final resolution in preferred) {
+      for (final item in videos) {
+        final current = item['resolution']?.toString().toLowerCase() ?? '';
+        if (current != resolution) continue;
+        final info = Map<String, dynamic>.from(
+          item['video_info'] as Map? ?? <String, dynamic>{},
+        );
+        final url = info['url']?.toString() ?? '';
+        if (url.isNotEmpty) return url;
+      }
+    }
+
+    for (final item in videos) {
+      final info = Map<String, dynamic>.from(
+        item['video_info'] as Map? ?? <String, dynamic>{},
+      );
+      final url = info['url']?.toString() ?? '';
+      if (url.isNotEmpty) return url;
+    }
+    return '';
+  }
+
+  Map<String, String> _extractPlayableHeaders(Map<String, dynamic> data) {
+    final headers = <String, String>{};
+    final levelHeaders = data['headers'];
+    if (levelHeaders is Map) {
+      for (final entry in levelHeaders.entries) {
+        headers[entry.key.toString()] = entry.value.toString();
+      }
+    }
+    final list = data['video_list'];
+    if (list is List) {
+      for (final entry in list.whereType<Map>()) {
+        final item = Map<String, dynamic>.from(entry);
+        final info = Map<String, dynamic>.from(
+          item['video_info'] as Map? ?? <String, dynamic>{},
+        );
+        final infoHeaders = info['headers'];
+        if (infoHeaders is Map) {
+          for (final h in infoHeaders.entries) {
+            headers[h.key.toString()] = h.value.toString();
+          }
+          if (headers.isNotEmpty) {
+            return headers;
+          }
+        }
+      }
+    }
+    return headers;
+  }
+
+  Map<String, String> _mergePlayableHeaders({
+    required QuarkAuthState auth,
+    required Map<String, String> resolved,
+  }) {
+    final merged = Map<String, String>.from(resolved);
+    _setHeaderCaseInsensitive(merged, 'User-Agent', _desktopChromeUa);
+    final cookie = auth.cookie?.trim() ?? '';
+    if (cookie.isNotEmpty) {
+      _setHeaderCaseInsensitive(merged, 'Cookie', cookie);
+    }
+    return merged;
+  }
+
+  void _setHeaderCaseInsensitive(
+    Map<String, String> headers,
+    String name,
+    String value,
+  ) {
+    final toRemove = <String>[];
+    for (final key in headers.keys) {
+      if (key.toLowerCase() == name.toLowerCase()) {
+        toRemove.add(key);
+      }
+    }
+    for (final key in toRemove) {
+      headers.remove(key);
+    }
+    headers[name] = value;
   }
 }

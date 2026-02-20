@@ -155,17 +155,22 @@ class SharePlayOrchestrator {
       prepared.showDirName,
     );
 
-    await _transferService.clearFolder(folder.folderId);
-    await _transferService.saveShareEpisodeToFolder(
-      shareUrl: prepared.request.shareUrl,
-      episode: selectedShareFile,
-      folderId: folder.folderId,
-    );
-
-    final selectedSaved = await _findSavedFileAfterTransfer(
+    QuarkFileEntry? selectedSaved = await _findSavedFileByName(
       rootFolderId: folder.folderId,
       preferredName: selected.name,
     );
+    if (selectedSaved == null) {
+      await _transferService.clearFolder(folder.folderId);
+      await _transferService.saveShareEpisodeToFolder(
+        shareUrl: prepared.request.shareUrl,
+        episode: selectedShareFile,
+        folderId: folder.folderId,
+      );
+      selectedSaved = await _findSavedFileAfterTransfer(
+        rootFolderId: folder.folderId,
+        preferredName: selected.name,
+      );
+    }
     if (selectedSaved == null) {
       throw PlaybackException('转存后未找到选中剧集文件', code: 'EPISODE_SAVE_MISSING');
     }
@@ -196,6 +201,32 @@ class SharePlayOrchestrator {
       ),
     );
     return media;
+  }
+
+  Future<QuarkFileEntry?> _findSavedFileByName({
+    required String rootFolderId,
+    required String preferredName,
+  }) async {
+    final rootFiles = await _transferService.listFilesInFolder(rootFolderId);
+    final direct = _pickSavedFile(rootFiles, preferredName);
+    if (direct != null) {
+      return direct;
+    }
+    final queue = <String>[
+      ...rootFiles.where((e) => e.isDirectory).map((e) => e.fileId),
+    ];
+    final visited = <String>{rootFolderId};
+    while (queue.isNotEmpty) {
+      final folderId = queue.removeAt(0);
+      if (!visited.add(folderId)) continue;
+      final files = await _transferService.listFilesInFolder(folderId);
+      final hit = _pickSavedFile(files, preferredName);
+      if (hit != null) {
+        return hit;
+      }
+      queue.addAll(files.where((e) => e.isDirectory).map((e) => e.fileId));
+    }
+    return null;
   }
 
   Future<QuarkFileEntry?> _findSavedFileAfterTransfer({

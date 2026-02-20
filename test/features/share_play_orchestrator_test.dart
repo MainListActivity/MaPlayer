@@ -135,7 +135,7 @@ void main() {
     expect(saved?.cachedEpisodes.length, 2);
   });
 
-  test('playEpisode saves selected episode only and updates history', () async {
+  test('playEpisode skips transfer when selected episode already exists', () async {
     final transfer = _FakeTransferService();
     final history = _MemoryHistoryRepository();
     final orchestrator = SharePlayOrchestrator(
@@ -155,8 +155,8 @@ void main() {
     final media = await orchestrator.playEpisode(prepared, selected);
 
     expect(media.url, 'https://play.example.com/2.m3u8');
-    expect(transfer.clearedBeforeSave, isTrue);
-    expect(transfer.savedSelected, isTrue);
+    expect(transfer.clearedBeforeSave, isFalse);
+    expect(transfer.savedSelected, isFalse);
     expect(transfer.clearedAfterSave, isTrue);
 
     final saved = await history.findByShareUrl('https://pan.quark.cn/s/abc');

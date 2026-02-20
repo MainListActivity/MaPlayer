@@ -128,10 +128,11 @@ class _HomePageState extends State<HomePage> {
         _statusText = '播放完成';
       });
     } catch (e) {
-      _showSnack('处理失败: $e');
+      final err = e.toString();
+      _showSnack('处理失败: $err');
       if (!mounted) return;
       setState(() {
-        _statusText = '处理失败';
+        _statusText = '处理失败: $err';
       });
     } finally {
       if (mounted) {
