@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:ma_palyer/core/security/credential_store.dart';
 import 'package:ma_palyer/features/cloud/quark/quark_models.dart';
@@ -16,6 +17,10 @@ class QuarkAuthService {
   final CredentialStore _credentialStore;
   final http.Client _http;
   final Uri _baseUri;
+
+  void _logAuth(String message) {
+    debugPrint('[QuarkAuth] $message');
+  }
 
   Future<QuarkAuthState?> currentAuthState() async {
     final json = await _credentialStore.readJson(CredentialStore.quarkAuthKey);
@@ -36,7 +41,13 @@ class QuarkAuthService {
   Future<QuarkAuthState?> syncAuthStateFromCookies(String cookieHeader) async {
     if (cookieHeader.trim().isEmpty) return null;
     final isLoggedIn = await probeLoginByCookie(cookieHeader);
-    if (!isLoggedIn) return null;
+    if (!isLoggedIn) {
+      final allowFallback = _looksLikeAuthenticatedCookie(cookieHeader);
+      if (!allowFallback) {
+        return null;
+      }
+      _logAuth('probe failed but cookie heuristic matched, accepting cookie login');
+    }
     final now = DateTime.now().millisecondsSinceEpoch;
     final state = QuarkAuthState(
       accessToken: '',
@@ -52,8 +63,19 @@ class QuarkAuthService {
     final uri = _baseUri.resolve('user/info');
     final response = await _http.get(
       uri,
-      headers: <String, String>{'Cookie': cookieHeader},
+      headers: <String, String>{
+        'Cookie': cookieHeader,
+        'Accept': 'application/json, text/plain, */*',
+        'Accept-Language': 'en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7',
+        'Origin': 'https://pan.quark.cn',
+        'Referer': 'https://pan.quark.cn/',
+        'User-Agent':
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
+            'AppleWebKit/537.36 (KHTML, like Gecko) '
+            'Chrome/145.0.0.0 Safari/537.36',
+      },
     );
+    _logAuth('probe status=${response.statusCode}, body=${response.body}');
     if (response.statusCode < 200 || response.statusCode >= 300) {
       return false;
     }
@@ -65,6 +87,32 @@ class QuarkAuthService {
       if (code is num) return code.toInt() == 0;
     }
     return true;
+  }
+
+  bool _looksLikeAuthenticatedCookie(String cookieHeader) {
+    final cookieNames = cookieHeader
+        .split(';')
+        .map((part) => part.trim())
+        .where((part) => part.contains('='))
+        .map((part) => part.substring(0, part.indexOf('=')))
+        .map((name) => name.toLowerCase())
+        .toSet();
+    final strongMarkers = <String>[
+      '__puus',
+      '__pus',
+      '_up_a4a_11_',
+      'access_token',
+      'refresh_token',
+      'auth',
+      'token',
+      'sid',
+      'uid',
+      'userid',
+    ];
+    final hasMarker = cookieNames.any(
+      (name) => strongMarkers.any((marker) => name.contains(marker)),
+    );
+    return hasMarker || cookieNames.length >= 4;
   }
 
   Future<QuarkQrSession> createQrSession() async {

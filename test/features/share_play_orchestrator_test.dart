@@ -20,8 +20,29 @@ class _FakeAuthService extends QuarkAuthService {
 class _FakeTransferService extends QuarkTransferService {
   _FakeTransferService() : super(authService: _FakeAuthService());
 
-  bool transferred = false;
-  List<QuarkFileEntry> files = <QuarkFileEntry>[];
+  bool savedSelected = false;
+  bool clearedBeforeSave = false;
+  bool clearedAfterSave = false;
+  List<QuarkShareFileEntry> shareEpisodes = const <QuarkShareFileEntry>[
+    QuarkShareFileEntry(
+      fid: 's1',
+      fileName: '第1集.mp4',
+      pdirFid: '0',
+      shareFidToken: 't1',
+      isDirectory: false,
+    ),
+    QuarkShareFileEntry(
+      fid: 's2',
+      fileName: '第2集.mp4',
+      pdirFid: '0',
+      shareFidToken: 't2',
+      isDirectory: false,
+    ),
+  ];
+  List<QuarkFileEntry> files = <QuarkFileEntry>[
+    const QuarkFileEntry(fileId: 'd2', fileName: '第2集.mp4', isDirectory: false),
+    const QuarkFileEntry(fileId: 'd-x', fileName: '其他.mp4', isDirectory: false),
+  ];
 
   @override
   Future<QuarkFolderLookupResult> findOrCreateShowFolder(String rootDir, String showDirName) async {
@@ -34,23 +55,40 @@ class _FakeTransferService extends QuarkTransferService {
   }
 
   @override
+  Future<List<QuarkShareFileEntry>> listShareEpisodes(String shareUrl) async {
+    return shareEpisodes;
+  }
+
+  @override
+  Future<void> clearFolder(String folderId) async {
+    clearedBeforeSave = true;
+  }
+
+  @override
+  Future<void> clearFolderExcept(String folderId, String keepFileId) async {
+    expect(keepFileId, 'd2');
+    clearedAfterSave = true;
+  }
+
+  @override
+  Future<void> saveShareEpisodeToFolder({
+    required String shareUrl,
+    required QuarkShareFileEntry episode,
+    required String folderId,
+  }) async {
+    expect(episode.fid, 's2');
+    savedSelected = true;
+  }
+
+  @override
   Future<List<QuarkFileEntry>> listFilesInFolder(String folderId) async {
     return files;
   }
 
   @override
-  Future<QuarkSavedFile> saveShareToFolder(QuarkShareRef shareRef, String folderId) async {
-    transferred = true;
-    files = <QuarkFileEntry>[
-      const QuarkFileEntry(fileId: 'e1', fileName: '第1集.mp4', isDirectory: false),
-      const QuarkFileEntry(fileId: 'e2', fileName: '第2集.mp4', isDirectory: false),
-    ];
-    return const QuarkSavedFile(fileId: 'task1', fileName: 'saved', parentDir: '/MaPlayer');
-  }
-
-  @override
   Future<QuarkPlayableFile> resolvePlayableFile(String savedFileId) async {
-    return const QuarkPlayableFile(url: 'https://play.example.com/1.m3u8', headers: <String, String>{});
+    expect(savedFileId, 'd2');
+    return const QuarkPlayableFile(url: 'https://play.example.com/2.m3u8', headers: <String, String>{});
   }
 }
 
@@ -74,7 +112,7 @@ class _MemoryHistoryRepository extends PlayHistoryRepository {
 }
 
 void main() {
-  test('prepareEpisodes transfers when folder empty', () async {
+  test('prepareEpisodes checks auth and caches share episodes', () async {
     final transfer = _FakeTransferService();
     final history = _MemoryHistoryRepository();
     final orchestrator = SharePlayOrchestrator(
@@ -91,16 +129,14 @@ void main() {
       ),
     );
 
-    expect(transfer.transferred, isTrue);
     expect(prepared.episodes.length, 2);
     expect(prepared.episodes.first.name, '第1集.mp4');
+    final saved = await history.findByShareUrl('https://pan.quark.cn/s/abc');
+    expect(saved?.cachedEpisodes.length, 2);
   });
 
-  test('prepareEpisodes skips transfer when folder has videos', () async {
+  test('playEpisode saves selected episode only and updates history', () async {
     final transfer = _FakeTransferService();
-    transfer.files = <QuarkFileEntry>[
-      const QuarkFileEntry(fileId: 'e1', fileName: '第1集.mp4', isDirectory: false),
-    ];
     final history = _MemoryHistoryRepository();
     final orchestrator = SharePlayOrchestrator(
       authService: _FakeAuthService(),
@@ -115,35 +151,16 @@ void main() {
         title: '测试剧',
       ),
     );
+    final selected = prepared.episodes[1];
+    final media = await orchestrator.playEpisode(prepared, selected);
 
-    expect(transfer.transferred, isFalse);
-    expect(prepared.episodes.length, 1);
-  });
-
-  test('playEpisode updates history and returns media', () async {
-    final transfer = _FakeTransferService();
-    transfer.files = <QuarkFileEntry>[
-      const QuarkFileEntry(fileId: 'e1', fileName: '第1集.mp4', isDirectory: false),
-    ];
-    final history = _MemoryHistoryRepository();
-    final orchestrator = SharePlayOrchestrator(
-      authService: _FakeAuthService(),
-      transferService: transfer,
-      historyRepository: history,
-    );
-
-    final prepared = await orchestrator.prepareEpisodes(
-      const SharePlayRequest(
-        shareUrl: 'https://pan.quark.cn/s/abc',
-        pageUrl: 'https://www.wogg.net/v/1',
-        title: '测试剧',
-      ),
-    );
-
-    final media = await orchestrator.playEpisode(prepared, prepared.episodes.first);
-    expect(media.url, 'https://play.example.com/1.m3u8');
+    expect(media.url, 'https://play.example.com/2.m3u8');
+    expect(transfer.clearedBeforeSave, isTrue);
+    expect(transfer.savedSelected, isTrue);
+    expect(transfer.clearedAfterSave, isTrue);
 
     final saved = await history.findByShareUrl('https://pan.quark.cn/s/abc');
-    expect(saved?.lastEpisodeName, '第1集.mp4');
+    expect(saved?.lastEpisodeFileId, 's2');
+    expect(saved?.lastEpisodeName, '第2集.mp4');
   });
 }

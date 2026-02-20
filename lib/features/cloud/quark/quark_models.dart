@@ -115,6 +115,24 @@ class QuarkPlayableFile {
   final String? subtitle;
 }
 
+class QuarkShareFileEntry {
+  const QuarkShareFileEntry({
+    required this.fid,
+    required this.fileName,
+    required this.pdirFid,
+    required this.shareFidToken,
+    required this.isDirectory,
+    this.updatedAtEpochMs,
+  });
+
+  final String fid;
+  final String fileName;
+  final String pdirFid;
+  final String shareFidToken;
+  final bool isDirectory;
+  final int? updatedAtEpochMs;
+}
+
 class QuarkException implements Exception {
   QuarkException(this.message, {this.code});
 

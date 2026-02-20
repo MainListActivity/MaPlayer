@@ -9,6 +9,7 @@ class PlayHistoryItem {
     required this.updatedAtEpochMs,
     this.lastEpisodeFileId,
     this.lastEpisodeName,
+    this.cachedEpisodes = const <PlayHistoryEpisode>[],
   });
 
   final String shareUrl;
@@ -19,6 +20,7 @@ class PlayHistoryItem {
   final String showDirName;
   final String? lastEpisodeFileId;
   final String? lastEpisodeName;
+  final List<PlayHistoryEpisode> cachedEpisodes;
   final int updatedAtEpochMs;
 
   PlayHistoryItem copyWith({
@@ -30,6 +32,7 @@ class PlayHistoryItem {
     String? showDirName,
     String? lastEpisodeFileId,
     String? lastEpisodeName,
+    List<PlayHistoryEpisode>? cachedEpisodes,
     int? updatedAtEpochMs,
   }) {
     return PlayHistoryItem(
@@ -41,6 +44,7 @@ class PlayHistoryItem {
       showDirName: showDirName ?? this.showDirName,
       lastEpisodeFileId: lastEpisodeFileId ?? this.lastEpisodeFileId,
       lastEpisodeName: lastEpisodeName ?? this.lastEpisodeName,
+      cachedEpisodes: cachedEpisodes ?? this.cachedEpisodes,
       updatedAtEpochMs: updatedAtEpochMs ?? this.updatedAtEpochMs,
     );
   }
@@ -54,6 +58,7 @@ class PlayHistoryItem {
     'showDirName': showDirName,
     'lastEpisodeFileId': lastEpisodeFileId,
     'lastEpisodeName': lastEpisodeName,
+    'cachedEpisodes': cachedEpisodes.map((e) => e.toJson()).toList(),
     'updatedAtEpochMs': updatedAtEpochMs,
   };
 
@@ -67,7 +72,41 @@ class PlayHistoryItem {
       showDirName: json['showDirName']?.toString() ?? '',
       lastEpisodeFileId: json['lastEpisodeFileId']?.toString(),
       lastEpisodeName: json['lastEpisodeName']?.toString(),
+      cachedEpisodes:
+          (json['cachedEpisodes'] as List? ?? const <dynamic>[])
+              .whereType<Map>()
+              .map(
+                (e) => PlayHistoryEpisode.fromJson(Map<String, dynamic>.from(e)),
+              )
+              .where((e) => e.fileId.isNotEmpty)
+              .toList(),
       updatedAtEpochMs: (json['updatedAtEpochMs'] as num?)?.toInt() ?? 0,
+    );
+  }
+}
+
+class PlayHistoryEpisode {
+  const PlayHistoryEpisode({
+    required this.fileId,
+    required this.name,
+    required this.shareFidToken,
+  });
+
+  final String fileId;
+  final String name;
+  final String shareFidToken;
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+    'fileId': fileId,
+    'name': name,
+    'shareFidToken': shareFidToken,
+  };
+
+  factory PlayHistoryEpisode.fromJson(Map<String, dynamic> json) {
+    return PlayHistoryEpisode(
+      fileId: json['fileId']?.toString() ?? '',
+      name: json['name']?.toString() ?? '',
+      shareFidToken: json['shareFidToken']?.toString() ?? '',
     );
   }
 }
