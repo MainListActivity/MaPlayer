@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:ma_palyer/core/spider/spider_asset_resolver.dart';
 import 'package:ma_palyer/core/spider/process/jar_executor.dart';
 import 'package:ma_palyer/core/spider/process/js_executor.dart';
@@ -87,12 +88,21 @@ class SpiderRuntime {
   }
 
   SpiderExecutor _createExecutor(TvBoxSite site, {String? globalSpider}) {
+    if (_shouldForceInMemoryExecutorOnThisPlatform()) {
+      return JsSpiderExecutor(logger: _logger);
+    }
     final type = detectEngineFromSite(site, globalSpider: globalSpider);
     return switch (type) {
       SpiderEngineType.js => JsSpiderExecutor(logger: _logger),
       SpiderEngineType.jar => JarSpiderExecutor(logger: _logger),
       SpiderEngineType.py => PySpiderExecutor(logger: _logger),
     };
+  }
+
+  bool _shouldForceInMemoryExecutorOnThisPlatform() {
+    if (kIsWeb) return true;
+    return defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.iOS;
   }
 }
 

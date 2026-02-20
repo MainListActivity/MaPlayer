@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart';
 import 'package:ma_palyer/core/spider/spider_engine.dart';
 
 class SpiderProcessManager {
@@ -202,6 +203,11 @@ class SpiderProcessManager {
   }
 
   bool _shouldUseInMemoryMode() {
+    if (kIsWeb) return true;
+    if (defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.iOS) {
+      return true;
+    }
     if (!Platform.isMacOS) return false;
     return Platform.environment.containsKey('APP_SANDBOX_CONTAINER_ID');
   }
