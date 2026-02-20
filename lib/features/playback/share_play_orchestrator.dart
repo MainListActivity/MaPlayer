@@ -11,6 +11,7 @@ class SharePlayRequest {
     required this.pageUrl,
     required this.title,
     this.coverUrl,
+    this.coverHeaders,
     this.intro,
   });
 
@@ -18,6 +19,7 @@ class SharePlayRequest {
   final String pageUrl;
   final String title;
   final String? coverUrl;
+  final Map<String, String>? coverHeaders;
   final String? intro;
 }
 
@@ -102,6 +104,7 @@ class SharePlayOrchestrator {
         pageUrl: request.pageUrl,
         title: request.title,
         coverUrl: request.coverUrl ?? '',
+        coverHeaders: request.coverHeaders ?? const <String, String>{},
         intro: request.intro ?? '',
         showDirName: showDirName,
         lastEpisodeFileId: history?.lastEpisodeFileId,
@@ -192,6 +195,7 @@ class SharePlayOrchestrator {
         pageUrl: prepared.request.pageUrl,
         title: prepared.request.title,
         coverUrl: prepared.request.coverUrl ?? '',
+        coverHeaders: prepared.request.coverHeaders ?? const <String, String>{},
         intro: prepared.request.intro ?? '',
         showDirName: prepared.showDirName,
         lastEpisodeFileId: selected.fileId,

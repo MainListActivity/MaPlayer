@@ -1,3 +1,4 @@
+import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:ma_palyer/app/app_route.dart';
@@ -7,6 +8,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 
 import 'package:ma_palyer/features/playback/share_play_orchestrator.dart';
 import 'package:ma_palyer/features/playback/media_file_parser.dart';
+import 'package:ma_palyer/features/player/vertical_volume_button.dart';
 
 class PlayerPageArgs {
   const PlayerPageArgs({this.media, this.shareRequest, this.title});
@@ -350,128 +352,124 @@ class _PlayerPageState extends State<PlayerPage> {
     ];
   }
 
-  Widget _buildEpisodesButton() {
-    return InkWell(
-      onTap: _showEpisodesDialog,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        decoration: BoxDecoration(
-          color: const Color(0xFFF47B25).withOpacity(0.2),
-          borderRadius: BorderRadius.circular(4),
-          border: Border.all(color: const Color(0xFFF47B25).withOpacity(0.5)),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: const [
-            Text(
-              '选集',
-              style: TextStyle(
-                color: Color(0xFFF47B25),
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            SizedBox(width: 4),
-            Icon(
-              Icons.format_list_bulleted,
-              color: Color(0xFFF47B25),
-              size: 14,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   List<Widget> _buildBottomButtonBar() {
     return [
       const MaterialDesktopSkipPreviousButton(),
       const MaterialDesktopPlayOrPauseButton(),
       const MaterialDesktopSkipNextButton(),
-      const MaterialDesktopVolumeButton(),
+      const VerticalVolumeButton(iconSize: 24),
+      MaterialDesktopCustomButton(
+        onPressed: _showEpisodesDialog,
+        icon: const Icon(Icons.format_list_bulleted),
+      ),
+      const SizedBox(width: 8),
       const MaterialDesktopPositionIndicator(),
-      const Spacer(),
-      _buildEpisodesButton(),
       const Spacer(),
       const MaterialDesktopFullscreenButton(),
     ];
   }
 
   Widget _buildTopNavigation() {
+    // On macOS, reserve space for the traffic light buttons (close/minimize/maximize)
+    final isMacOS = Platform.isMacOS;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-      decoration: const BoxDecoration(
-        color: Color(0xFF101622),
-        border: Border(bottom: BorderSide(color: Color(0xFF232F48))),
+      height: 52,
+      padding: EdgeInsets.only(left: isMacOS ? 78 : 16, right: 16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0D1219),
+        border: Border(
+          bottom: BorderSide(
+            color: const Color(0xFF232F48).withValues(alpha: 0.5),
+          ),
+        ),
       ),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Row(
-            children: [
-              IconButton(
-                icon: const Icon(Icons.arrow_back, color: Colors.white),
-                onPressed: () {
-                  Navigator.pushReplacementNamed(context, AppRoutes.home);
-                },
-              ),
-              const SizedBox(width: 8),
-              SvgPicture.asset(
-                'logo/ma_player_logo.svg',
-                width: 32,
-                height: 32,
-              ),
-              const SizedBox(width: 12),
-              const Text(
-                'Ma Player',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
-          // We can put a fake search or user avatar here just to match design layout
-          Row(
-            children: [
-              Container(
-                width: 200,
-                height: 36,
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1A2332),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: const Color(0xFF2E3B56)),
-                ),
-                child: const Row(
-                  children: [
-                    Icon(Icons.search, color: Color(0xFF92A4C9), size: 18),
-                    SizedBox(width: 8),
-                    Expanded(
-                      child: TextField(
-                        decoration: InputDecoration(
-                          hintText: 'Search...',
-                          hintStyle: TextStyle(
-                            color: Color(0xFF92A4C9),
-                            fontSize: 13,
-                          ),
-                          border: InputBorder.none,
-                          isDense: true,
-                        ),
-                        style: TextStyle(color: Colors.white, fontSize: 13),
-                      ),
+          // Back button + Logo (tappable as a unit)
+          InkWell(
+            borderRadius: BorderRadius.circular(8),
+            onTap: () {
+              Navigator.pushReplacementNamed(context, AppRoutes.home);
+            },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(
+                    Icons.arrow_back_ios_new_rounded,
+                    color: Colors.white70,
+                    size: 16,
+                  ),
+                  const SizedBox(width: 10),
+                  SvgPicture.asset(
+                    'logo/ma_player_logo.svg',
+                    width: 28,
+                    height: 28,
+                  ),
+                  const SizedBox(width: 10),
+                  const Text(
+                    'Ma Player',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0.3,
                     ),
-                  ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const Spacer(),
+          // Compact pill search bar
+          Container(
+            width: 180,
+            height: 32,
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            decoration: BoxDecoration(
+              color: const Color(0xFF151D2B),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: const Color(0xFF232F48).withValues(alpha: 0.6),
+              ),
+            ),
+            child: const Row(
+              children: [
+                Icon(Icons.search_rounded, color: Color(0xFF5A6F8E), size: 16),
+                SizedBox(width: 6),
+                Expanded(
+                  child: TextField(
+                    decoration: InputDecoration(
+                      hintText: 'Search...',
+                      hintStyle: TextStyle(
+                        color: Color(0xFF5A6F8E),
+                        fontSize: 12,
+                      ),
+                      border: InputBorder.none,
+                      isDense: true,
+                      contentPadding: EdgeInsets.symmetric(vertical: 8),
+                    ),
+                    style: TextStyle(color: Colors.white70, fontSize: 12),
+                  ),
                 ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          // Avatar with orange gradient
+          Container(
+            width: 30,
+            height: 30,
+            decoration: const BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: LinearGradient(
+                colors: [Color(0xFFF47B25), Color(0xFFE85D04)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
               ),
-              const SizedBox(width: 16),
-              const CircleAvatar(
-                radius: 16,
-                backgroundColor: Color(0xFF2E3B56),
-                child: Icon(Icons.person, size: 18, color: Colors.white70),
-              ),
-            ],
+            ),
+            child: const Icon(Icons.person, size: 16, color: Colors.white),
           ),
         ],
       ),

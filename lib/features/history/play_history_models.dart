@@ -4,6 +4,7 @@ class PlayHistoryItem {
     required this.pageUrl,
     required this.title,
     required this.coverUrl,
+    this.coverHeaders = const <String, String>{},
     required this.intro,
     required this.showDirName,
     required this.updatedAtEpochMs,
@@ -16,6 +17,7 @@ class PlayHistoryItem {
   final String pageUrl;
   final String title;
   final String coverUrl;
+  final Map<String, String> coverHeaders;
   final String intro;
   final String showDirName;
   final String? lastEpisodeFileId;
@@ -28,6 +30,7 @@ class PlayHistoryItem {
     String? pageUrl,
     String? title,
     String? coverUrl,
+    Map<String, String>? coverHeaders,
     String? intro,
     String? showDirName,
     String? lastEpisodeFileId,
@@ -40,6 +43,7 @@ class PlayHistoryItem {
       pageUrl: pageUrl ?? this.pageUrl,
       title: title ?? this.title,
       coverUrl: coverUrl ?? this.coverUrl,
+      coverHeaders: coverHeaders ?? this.coverHeaders,
       intro: intro ?? this.intro,
       showDirName: showDirName ?? this.showDirName,
       lastEpisodeFileId: lastEpisodeFileId ?? this.lastEpisodeFileId,
@@ -54,6 +58,7 @@ class PlayHistoryItem {
     'pageUrl': pageUrl,
     'title': title,
     'coverUrl': coverUrl,
+    'coverHeaders': coverHeaders,
     'intro': intro,
     'showDirName': showDirName,
     'lastEpisodeFileId': lastEpisodeFileId,
@@ -68,6 +73,16 @@ class PlayHistoryItem {
       pageUrl: json['pageUrl']?.toString() ?? '',
       title: json['title']?.toString() ?? '',
       coverUrl: json['coverUrl']?.toString() ?? '',
+      coverHeaders:
+          (json['coverHeaders'] as Map?)
+              ?.map(
+                (key, value) => MapEntry(
+                  key.toString(),
+                  value?.toString() ?? '',
+                ),
+              )
+              .cast<String, String>() ??
+          const <String, String>{},
       intro: json['intro']?.toString() ?? '',
       showDirName: json['showDirName']?.toString() ?? '',
       lastEpisodeFileId: json['lastEpisodeFileId']?.toString(),

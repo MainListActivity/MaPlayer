@@ -14,6 +14,7 @@ void main() {
         pageUrl: 'https://www.wogg.net/x',
         title: 'A',
         coverUrl: '',
+        coverHeaders: <String, String>{'Referer': 'https://www.wogg.net/x'},
         intro: '',
         showDirName: 'A',
         updatedAtEpochMs: 1,
@@ -26,6 +27,7 @@ void main() {
         pageUrl: 'https://www.wogg.net/x',
         title: 'A-2',
         coverUrl: '',
+        coverHeaders: <String, String>{'Referer': 'https://www.wogg.net/x'},
         intro: '',
         showDirName: 'A',
         updatedAtEpochMs: 2,
@@ -53,5 +55,6 @@ void main() {
     final a = await repo.findByShareUrl('https://pan.quark.cn/s/a');
     expect(a?.title, 'A-2');
     expect(a?.lastEpisodeFileId, 'f1');
+    expect(a?.coverHeaders['Referer'], 'https://www.wogg.net/x');
   });
 }

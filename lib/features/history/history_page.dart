@@ -17,7 +17,7 @@ class _HistoryPageState extends State<HistoryPage> {
 
   List<PlayHistoryItem> _items = const <PlayHistoryItem>[];
   bool _isLoading = true;
-  bool _isBusy = false;
+  final bool _isBusy = false;
 
   @override
   void initState() {
@@ -41,6 +41,11 @@ class _HistoryPageState extends State<HistoryPage> {
     final pageUrl = payload['pageUrl']?.toString() ?? '';
     final title = payload['title']?.toString() ?? '';
     final cover = payload['cover']?.toString();
+    final coverHeaders = (payload['coverHeaders'] as Map?)
+        ?.map(
+          (key, value) => MapEntry(key.toString(), value?.toString() ?? ''),
+        )
+        .cast<String, String>();
     final intro = payload['intro']?.toString();
     if (shareUrl.isEmpty) {
       _showSnack('未找到夸克分享链接');
@@ -56,6 +61,7 @@ class _HistoryPageState extends State<HistoryPage> {
           pageUrl: pageUrl,
           title: title.isEmpty ? '未命名剧集' : title,
           coverUrl: cover,
+          coverHeaders: coverHeaders,
           intro: intro,
         ),
         title: title.isEmpty ? '未命名剧集' : title,
@@ -70,6 +76,7 @@ class _HistoryPageState extends State<HistoryPage> {
       'pageUrl': item.pageUrl,
       'title': item.title,
       'cover': item.coverUrl,
+      'coverHeaders': item.coverHeaders,
       'intro': item.intro,
     });
   }
@@ -157,8 +164,12 @@ class _HistoryPageState extends State<HistoryPage> {
                                   child: item.coverUrl.isNotEmpty
                                       ? Image.network(
                                           item.coverUrl,
+                                          headers: item.coverHeaders.isEmpty
+                                              ? null
+                                              : item.coverHeaders,
                                           fit: BoxFit.cover,
-                                          errorBuilder: (_, __, ___) =>
+                                          errorBuilder:
+                                              (context, error, stackTrace) =>
                                               const Center(
                                                 child: Icon(
                                                   Icons.movie,
