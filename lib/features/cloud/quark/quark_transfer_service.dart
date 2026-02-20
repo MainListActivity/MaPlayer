@@ -6,20 +6,25 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:ma_palyer/features/cloud/quark/quark_auth_service.dart';
 import 'package:ma_palyer/features/cloud/quark/quark_models.dart';
+import 'package:ma_palyer/features/cloud/quark/quark_playback_cookie_provider.dart';
 
 class QuarkTransferService {
   QuarkTransferService({
     required QuarkAuthService authService,
     http.Client? httpClient,
     Uri? baseUri,
+    QuarkPlaybackCookieProvider? playbackCookieProvider,
   }) : _authService = authService,
        _http = httpClient ?? http.Client(),
        _baseUri =
-           baseUri ?? Uri.parse('https://drive-pc.quark.cn/1/clouddrive/');
+           baseUri ?? Uri.parse('https://drive-pc.quark.cn/1/clouddrive/'),
+       _playbackCookieProvider =
+           playbackCookieProvider ?? QuarkHeadlessWebViewCookieProvider();
 
   final QuarkAuthService _authService;
   final http.Client _http;
   final Uri _baseUri;
+  final QuarkPlaybackCookieProvider _playbackCookieProvider;
   static const _desktopChromeUa =
       'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
       'AppleWebKit/537.36 (KHTML, like Gecko) '
@@ -354,14 +359,31 @@ class QuarkTransferService {
       if (url.isEmpty) {
         throw QuarkException('Playable URL missing', code: 'PLAYABLE_PAYLOAD');
       }
+      final webViewResolved = await _playbackCookieProvider.resolveForVideo(
+        savedFileId,
+      );
+      final webViewCookie = webViewResolved?.cookieHeader;
+      final webViewM3u8 = webViewResolved?.m3u8Url?.trim() ?? '';
+      final playableUrl = webViewM3u8.isNotEmpty ? webViewM3u8 : url;
+      if (webViewM3u8.isNotEmpty) {
+        _logTransfer('resolve playable: using m3u8 from webview=$webViewM3u8');
+      }
+      final latestVideoAuth = _extractVideoAuthFromSetCookie(response.headers);
+      if (latestVideoAuth != null && latestVideoAuth.isNotEmpty) {
+        _logTransfer(
+          'resolve playable: refreshed Video-Auth from set-cookie, Video-Auth=$latestVideoAuth',
+        );
+      }
 
       final headers = _mergePlayableHeaders(
         auth: auth,
         resolved: _extractPlayableHeaders(data),
+        webViewCookie: webViewCookie,
+        latestVideoAuth: latestVideoAuth,
       );
 
       return QuarkPlayableFile(
-        url: url,
+        url: playableUrl,
         headers: headers,
         subtitle: data['subtitle']?.toString(),
       );
@@ -1006,14 +1028,59 @@ class QuarkTransferService {
   Map<String, String> _mergePlayableHeaders({
     required QuarkAuthState auth,
     required Map<String, String> resolved,
+    String? webViewCookie,
+    String? latestVideoAuth,
   }) {
     final merged = Map<String, String>.from(resolved);
     _setHeaderCaseInsensitive(merged, 'User-Agent', _desktopChromeUa);
-    final cookie = auth.cookie?.trim() ?? '';
+    final authCookie = auth.cookie?.trim() ?? '';
+    final resolvedCookie = _getHeaderCaseInsensitive(merged, 'Cookie')?.trim();
+    var cookie = webViewCookie?.trim() ?? '';
+    if (cookie.isEmpty) {
+      cookie = authCookie.isNotEmpty ? authCookie : (resolvedCookie ?? '');
+    }
+    if (latestVideoAuth != null && latestVideoAuth.isNotEmpty) {
+      cookie = _upsertCookie(cookie, 'Video-Auth', latestVideoAuth);
+    }
     if (cookie.isNotEmpty) {
       _setHeaderCaseInsensitive(merged, 'Cookie', cookie);
     }
     return merged;
+  }
+
+  String? _extractVideoAuthFromSetCookie(Map<String, String> headers) {
+    final setCookie = _getHeaderCaseInsensitive(headers, 'set-cookie');
+    if (setCookie == null || setCookie.isEmpty) {
+      return null;
+    }
+    final match = RegExp(
+      r'(^|[,\s])Video-Auth=([^;,\s]+)',
+      caseSensitive: false,
+    ).firstMatch(setCookie);
+    return match?.group(2);
+  }
+
+  String? _getHeaderCaseInsensitive(Map<String, String> headers, String name) {
+    for (final entry in headers.entries) {
+      if (entry.key.toLowerCase() == name.toLowerCase()) {
+        return entry.value;
+      }
+    }
+    return null;
+  }
+
+  String _upsertCookie(String cookieHeader, String key, String value) {
+    final cookies = <String, String>{};
+    for (final segment in cookieHeader.split(';')) {
+      final trimmed = segment.trim();
+      if (trimmed.isEmpty || !trimmed.contains('=')) continue;
+      final idx = trimmed.indexOf('=');
+      final name = trimmed.substring(0, idx).trim();
+      if (name.isEmpty) continue;
+      cookies[name] = trimmed.substring(idx + 1).trim();
+    }
+    cookies[key] = value;
+    return cookies.entries.map((e) => '${e.key}=${e.value}').join('; ');
   }
 
   void _setHeaderCaseInsensitive(

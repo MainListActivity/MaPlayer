@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:ma_palyer/features/cloud/quark/quark_auth_service.dart';
 import 'package:ma_palyer/features/cloud/quark/quark_models.dart';
+import 'package:ma_palyer/features/cloud/quark/quark_playback_cookie_provider.dart';
 import 'package:ma_palyer/features/cloud/quark/quark_transfer_service.dart';
 
 class _FakeAuthService extends QuarkAuthService {
@@ -16,11 +17,36 @@ class _FakeAuthService extends QuarkAuthService {
   Future<QuarkAuthState> ensureValidToken() async => state;
 }
 
+class _FakePlaybackCookieProvider implements QuarkPlaybackCookieProvider {
+  _FakePlaybackCookieProvider({this.cookie, this.m3u8Url});
+
+  final String? cookie;
+  final String? m3u8Url;
+
+  @override
+  Future<QuarkPlaybackWebViewResult?> resolveForVideo(String fileId) async {
+    if (cookie == null && m3u8Url == null) return null;
+    return QuarkPlaybackWebViewResult(cookieHeader: cookie, m3u8Url: m3u8Url);
+  }
+}
+
 String? _headerValue(Map<String, String> headers, String name) {
   for (final entry in headers.entries) {
     if (entry.key.toLowerCase() == name.toLowerCase()) {
       return entry.value;
     }
+  }
+  return null;
+}
+
+String? _cookieValue(String? cookieHeader, String name) {
+  if (cookieHeader == null) return null;
+  for (final segment in cookieHeader.split(';')) {
+    final trimmed = segment.trim();
+    if (!trimmed.contains('=')) continue;
+    final idx = trimmed.indexOf('=');
+    if (trimmed.substring(0, idx).trim() != name) continue;
+    return trimmed.substring(idx + 1).trim();
   }
   return null;
 }
@@ -72,6 +98,7 @@ void main() {
         authService: authService,
         httpClient: client,
         baseUri: Uri.parse('https://drive-pc.quark.cn/1/clouddrive/'),
+        playbackCookieProvider: _FakePlaybackCookieProvider(),
       );
 
       final playable = await service.resolvePlayableFile('file-1');
@@ -82,6 +109,150 @@ void main() {
       expect(playable.headers.containsKey('user-agent'), isFalse);
     },
   );
+
+  test('resolvePlayableFile uses latest Video-Auth from set-cookie', () async {
+    const cookie = 'sid=abc; Video-Auth=old-auth';
+    final authService = _FakeAuthService(
+      QuarkAuthState(
+        accessToken: 'token',
+        refreshToken: 'refresh',
+        expiresAtEpochMs: DateTime.now()
+            .add(const Duration(hours: 1))
+            .millisecondsSinceEpoch,
+        cookie: cookie,
+      ),
+    );
+
+    final client = MockClient((http.Request request) async {
+      return http.Response(
+        jsonEncode(<String, dynamic>{
+          'code': 0,
+          'data': <String, dynamic>{
+            'video_list': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'resolution': 'high',
+                'video_info': <String, dynamic>{
+                  'url': 'https://video.example.com/high.m3u8',
+                },
+              },
+            ],
+          },
+        }),
+        200,
+        headers: <String, String>{
+          'set-cookie':
+              'Video-Auth=new-auth; Max-Age=3600; Expires=Fri, 20-Feb-2026 14:27:19 GMT; Domain=quark.cn; Path=/',
+        },
+      );
+    });
+
+    final service = QuarkTransferService(
+      authService: authService,
+      httpClient: client,
+      baseUri: Uri.parse('https://drive-pc.quark.cn/1/clouddrive/'),
+      playbackCookieProvider: _FakePlaybackCookieProvider(),
+    );
+
+    final playable = await service.resolvePlayableFile('file-1');
+    final playbackCookie = playable.headers['Cookie'];
+    expect(_cookieValue(playbackCookie, 'sid'), 'abc');
+    expect(_cookieValue(playbackCookie, 'Video-Auth'), 'new-auth');
+    expect(playbackCookie, isNot(contains('old-auth')));
+  });
+
+  test(
+    'resolvePlayableFile prefers webview cookie for playback headers',
+    () async {
+      const authCookie = 'sid=auth-cookie; kps=auth-kps';
+      const webviewCookie = 'sid=web-cookie; kps=web-kps; foo=bar';
+      final authService = _FakeAuthService(
+        QuarkAuthState(
+          accessToken: 'token',
+          refreshToken: 'refresh',
+          expiresAtEpochMs: DateTime.now()
+              .add(const Duration(hours: 1))
+              .millisecondsSinceEpoch,
+          cookie: authCookie,
+        ),
+      );
+
+      final client = MockClient((http.Request request) async {
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'code': 0,
+            'data': <String, dynamic>{
+              'video_list': <Map<String, dynamic>>[
+                <String, dynamic>{
+                  'resolution': 'high',
+                  'video_info': <String, dynamic>{
+                    'url': 'https://video.example.com/high.m3u8',
+                  },
+                },
+              ],
+            },
+          }),
+          200,
+        );
+      });
+
+      final service = QuarkTransferService(
+        authService: authService,
+        httpClient: client,
+        baseUri: Uri.parse('https://drive-pc.quark.cn/1/clouddrive/'),
+        playbackCookieProvider: _FakePlaybackCookieProvider(
+          cookie: webviewCookie,
+        ),
+      );
+
+      final playable = await service.resolvePlayableFile('file-1');
+      expect(playable.headers['Cookie'], webviewCookie);
+    },
+  );
+
+  test('resolvePlayableFile prefers m3u8 from webview', () async {
+    final authService = _FakeAuthService(
+      QuarkAuthState(
+        accessToken: 'token',
+        refreshToken: 'refresh',
+        expiresAtEpochMs: DateTime.now()
+            .add(const Duration(hours: 1))
+            .millisecondsSinceEpoch,
+        cookie: 'sid=auth-cookie',
+      ),
+    );
+
+    final client = MockClient((http.Request request) async {
+      return http.Response(
+        jsonEncode(<String, dynamic>{
+          'code': 0,
+          'data': <String, dynamic>{
+            'video_list': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'resolution': 'high',
+                'video_info': <String, dynamic>{
+                  'url': 'https://api.example.com/from-api.m3u8',
+                },
+              },
+            ],
+          },
+        }),
+        200,
+      );
+    });
+
+    final service = QuarkTransferService(
+      authService: authService,
+      httpClient: client,
+      baseUri: Uri.parse('https://drive-pc.quark.cn/1/clouddrive/'),
+      playbackCookieProvider: _FakePlaybackCookieProvider(
+        cookie: 'sid=web-cookie',
+        m3u8Url: 'https://webview.example.com/from-webview.m3u8',
+      ),
+    );
+
+    final playable = await service.resolvePlayableFile('file-1');
+    expect(playable.url, 'https://webview.example.com/from-webview.m3u8');
+  });
 
   test(
     'findOrCreateShowFolder handles mkdir 400 conflict by reusing existing folder',
