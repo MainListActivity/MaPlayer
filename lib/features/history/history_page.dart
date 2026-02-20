@@ -1,11 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:ma_palyer/app/app_route.dart';
-import 'package:ma_palyer/features/cloud/quark/quark_auth_service.dart';
-import 'package:ma_palyer/features/cloud/quark/quark_login_webview_page.dart';
-import 'package:ma_palyer/features/cloud/quark/quark_models.dart';
 import 'package:ma_palyer/features/history/play_history_models.dart';
 import 'package:ma_palyer/features/history/play_history_repository.dart';
-import 'package:ma_palyer/features/playback/episode_picker_sheet.dart';
 import 'package:ma_palyer/features/playback/share_play_orchestrator.dart';
 import 'package:ma_palyer/features/player/player_page.dart';
 
@@ -18,8 +14,6 @@ class HistoryPage extends StatefulWidget {
 
 class _HistoryPageState extends State<HistoryPage> {
   final _historyRepository = PlayHistoryRepository();
-  final _authService = QuarkAuthService();
-  late final SharePlayOrchestrator _orchestrator;
 
   List<PlayHistoryItem> _items = const <PlayHistoryItem>[];
   bool _isLoading = true;
@@ -28,7 +22,6 @@ class _HistoryPageState extends State<HistoryPage> {
   @override
   void initState() {
     super.initState();
-    _orchestrator = SharePlayOrchestrator(authService: _authService);
     _loadHistory();
   }
 
@@ -54,54 +47,21 @@ class _HistoryPageState extends State<HistoryPage> {
       return;
     }
 
-    setState(() => _isBusy = true);
-
-    try {
-      final prepared = await _prepareWithLogin(
-        SharePlayRequest(
+    await Navigator.pushNamed(
+      context,
+      AppRoutes.player,
+      arguments: PlayerPageArgs(
+        shareRequest: SharePlayRequest(
           shareUrl: shareUrl,
           pageUrl: pageUrl,
           title: title.isEmpty ? '未命名剧集' : title,
           coverUrl: cover,
           intro: intro,
         ),
-      );
-      if (!mounted) return;
-      final selected = await EpisodePickerSheet.show(
-        context,
-        title: prepared.request.title,
-        episodes: prepared.episodes,
-        preferredFileId: prepared.preferredFileId,
-      );
-      if (selected == null) return;
-
-      final media = await _orchestrator.playEpisode(prepared, selected);
-      if (!mounted) return;
-      await Navigator.pushNamed(
-        context,
-        AppRoutes.player,
-        arguments: PlayerPageArgs(media: media, title: prepared.request.title),
-      );
-      await _loadHistory();
-    } catch (e) {
-      _showSnack('处理失败: $e');
-    } finally {
-      if (mounted) setState(() => _isBusy = false);
-    }
-  }
-
-  Future<PreparedEpisodeSelection> _prepareWithLogin(
-    SharePlayRequest request,
-  ) async {
-    try {
-      return await _orchestrator.prepareEpisodes(request);
-    } on QuarkException catch (e) {
-      final requiresAuth = e.code == 'AUTH_REQUIRED';
-      if (!requiresAuth) rethrow;
-      final ok = await QuarkLoginWebviewPage.open(context, _authService);
-      if (!ok) throw Exception('未完成夸克登录');
-      return _orchestrator.prepareEpisodes(request);
-    }
+        title: title.isEmpty ? '未命名剧集' : title,
+      ),
+    );
+    await _loadHistory();
   }
 
   Future<void> _openRecent(PlayHistoryItem item) async {

@@ -1,11 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:ma_palyer/app/app_route.dart';
-import 'package:ma_palyer/features/cloud/quark/quark_auth_service.dart';
-import 'package:ma_palyer/features/cloud/quark/quark_login_webview_page.dart';
-import 'package:ma_palyer/features/cloud/quark/quark_models.dart';
 
-import 'package:ma_palyer/features/playback/episode_picker_sheet.dart';
 import 'package:ma_palyer/features/playback/share_play_orchestrator.dart';
 import 'package:ma_palyer/features/player/player_page.dart';
 import 'package:ma_palyer/tvbox/tvbox_config_repository.dart';
@@ -19,8 +15,6 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   final _configRepository = TvBoxConfigRepository();
-  final _authService = QuarkAuthService();
-  late final SharePlayOrchestrator _orchestrator;
 
   InAppWebViewController? _webController;
   String _currentUrl = 'https://www.wogg.net/';
@@ -29,7 +23,6 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
-    _orchestrator = SharePlayOrchestrator(authService: _authService);
     TvBoxConfigRepository.configRevision.addListener(_onConfigRevisionChanged);
     _loadHomeUrl();
   }
@@ -69,68 +62,20 @@ class _HomePageState extends State<HomePage> {
       return;
     }
 
-    setState(() {
-      _isBusy = true;
-    });
-
-    try {
-      final prepared = await _prepareWithLogin(
-        SharePlayRequest(
+    await Navigator.pushNamed(
+      context,
+      AppRoutes.player,
+      arguments: PlayerPageArgs(
+        shareRequest: SharePlayRequest(
           shareUrl: shareUrl,
           pageUrl: pageUrl,
           title: title.isEmpty ? '未命名剧集' : title,
           coverUrl: cover,
           intro: intro,
         ),
-      );
-      if (!mounted) return;
-      final selected = await EpisodePickerSheet.show(
-        context,
-        title: prepared.request.title,
-        episodes: prepared.episodes,
-        preferredFileId: prepared.preferredFileId,
-      );
-      if (selected == null) {
-        return;
-      }
-
-      final media = await _orchestrator.playEpisode(prepared, selected);
-      if (!mounted) return;
-      await Navigator.pushNamed(
-        context,
-        AppRoutes.player,
-        arguments: PlayerPageArgs(media: media, title: prepared.request.title),
-      );
-      if (!mounted) return;
-    } catch (e) {
-      final err = e.toString();
-      _showSnack('处理失败: $err');
-      if (!mounted) return;
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isBusy = false;
-        });
-      }
-    }
-  }
-
-  Future<PreparedEpisodeSelection> _prepareWithLogin(
-    SharePlayRequest request,
-  ) async {
-    try {
-      return await _orchestrator.prepareEpisodes(request);
-    } on QuarkException catch (e) {
-      final requiresAuth = e.code == 'AUTH_REQUIRED';
-      if (!requiresAuth) {
-        rethrow;
-      }
-      final ok = await QuarkLoginWebviewPage.open(context, _authService);
-      if (!ok) {
-        throw Exception('未完成夸克登录');
-      }
-      return _orchestrator.prepareEpisodes(request);
-    }
+        title: title.isEmpty ? '未命名剧集' : title,
+      ),
+    );
   }
 
   Future<void> _injectPlayButtons() async {
