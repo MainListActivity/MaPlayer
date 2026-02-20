@@ -22,12 +22,16 @@ class PlayableMedia {
     required this.headers,
     required this.subtitle,
     required this.progressKey,
+    this.variants = const <QuarkPlayableVariant>[],
+    this.selectedVariant,
   });
 
   final String url;
   final Map<String, String> headers;
   final String? subtitle;
   final String progressKey;
+  final List<QuarkPlayableVariant> variants;
+  final QuarkPlayableVariant? selectedVariant;
 }
 
 class PlaybackResolveResult {

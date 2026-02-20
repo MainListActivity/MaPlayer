@@ -77,6 +77,8 @@ class PlaybackOrchestrator {
       headers: playable.headers,
       subtitle: playable.subtitle,
       progressKey: request.progressKey ?? _defaultProgressKey(request),
+      variants: playable.variants,
+      selectedVariant: playable.selectedVariant,
     );
     return PlaybackResolveResult(media: media, rawPlayerContent: content);
   }

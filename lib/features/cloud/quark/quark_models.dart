@@ -107,12 +107,36 @@ class QuarkPlayableFile {
   const QuarkPlayableFile({
     required this.url,
     required this.headers,
+    this.variants = const <QuarkPlayableVariant>[],
+    this.selectedVariant,
     this.subtitle,
   });
 
   final String url;
   final Map<String, String> headers;
+  final List<QuarkPlayableVariant> variants;
+  final QuarkPlayableVariant? selectedVariant;
   final String? subtitle;
+}
+
+class QuarkPlayableVariant {
+  const QuarkPlayableVariant({
+    required this.resolution,
+    required this.url,
+    required this.headers,
+    this.sizeBytes,
+    this.width,
+    this.height,
+    this.audioCodec,
+  });
+
+  final String resolution;
+  final String url;
+  final Map<String, String> headers;
+  final int? sizeBytes;
+  final int? width;
+  final int? height;
+  final String? audioCodec;
 }
 
 class QuarkShareFileEntry {

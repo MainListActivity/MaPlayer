@@ -350,26 +350,27 @@ class QuarkTransferService {
       final data = Map<String, dynamic>.from(
         body['data'] as Map? ?? <String, dynamic>{},
       );
-      final url = _pickPlayableUrlFromVideoList(data);
-      if (url.isEmpty) {
-        throw QuarkException('Playable URL missing', code: 'PLAYABLE_PAYLOAD');
-      }
       final latestVideoAuth = _extractVideoAuthFromSetCookie(response.headers);
       if (latestVideoAuth != null && latestVideoAuth.isNotEmpty) {
         _logTransfer(
           'resolve playable: refreshed Video-Auth from set-cookie, Video-Auth=$latestVideoAuth',
         );
       }
-
-      final headers = _mergePlayableHeaders(
+      final variants = _extractPlayableVariants(
         auth: auth,
-        resolved: _extractPlayableHeaders(data),
+        data: data,
         latestVideoAuth: latestVideoAuth,
       );
+      if (variants.isEmpty) {
+        throw QuarkException('Playable URL missing', code: 'PLAYABLE_PAYLOAD');
+      }
+      final selectedVariant = _pickPreferredVariant(variants);
 
       return QuarkPlayableFile(
-        url: url,
-        headers: headers,
+        url: selectedVariant.url,
+        headers: selectedVariant.headers,
+        variants: variants,
+        selectedVariant: selectedVariant,
         subtitle: data['subtitle']?.toString(),
       );
     }
@@ -949,65 +950,87 @@ class QuarkTransferService {
     return null;
   }
 
-  String _pickPlayableUrlFromVideoList(Map<String, dynamic> data) {
+  List<QuarkPlayableVariant> _extractPlayableVariants({
+    required QuarkAuthState auth,
+    required Map<String, dynamic> data,
+    String? latestVideoAuth,
+  }) {
     final list = data['video_list'];
-    if (list is! List) return '';
-    final videos = list
-        .whereType<Map>()
-        .map(Map<String, dynamic>.from)
-        .toList();
-    if (videos.isEmpty) return '';
+    if (list is! List) return const <QuarkPlayableVariant>[];
 
-    const preferred = <String>['super', 'high', 'normal', 'low', '2k', '4k'];
-    for (final resolution in preferred) {
-      for (final item in videos) {
-        final current = item['resolution']?.toString().toLowerCase() ?? '';
-        if (current != resolution) continue;
-        final info = Map<String, dynamic>.from(
-          item['video_info'] as Map? ?? <String, dynamic>{},
-        );
-        final url = info['url']?.toString() ?? '';
-        if (url.isNotEmpty) return url;
+    final dataHeaders = <String, String>{};
+    final levelHeaders = data['headers'];
+    if (levelHeaders is Map) {
+      for (final entry in levelHeaders.entries) {
+        dataHeaders[entry.key.toString()] = entry.value.toString();
       }
     }
 
-    for (final item in videos) {
+    final variants = <QuarkPlayableVariant>[];
+    final seenUrls = <String>{};
+    for (final raw in list.whereType<Map>()) {
+      final item = Map<String, dynamic>.from(raw);
       final info = Map<String, dynamic>.from(
         item['video_info'] as Map? ?? <String, dynamic>{},
       );
       final url = info['url']?.toString() ?? '';
-      if (url.isNotEmpty) return url;
+      if (url.isEmpty || !seenUrls.add(url)) continue;
+
+      final infoHeaders = <String, String>{};
+      final rawInfoHeaders = info['headers'];
+      if (rawInfoHeaders is Map) {
+        for (final h in rawInfoHeaders.entries) {
+          infoHeaders[h.key.toString()] = h.value.toString();
+        }
+      }
+      final mergedHeaders = <String, String>{...dataHeaders, ...infoHeaders};
+      final headers = _mergePlayableHeaders(
+        auth: auth,
+        resolved: mergedHeaders,
+        latestVideoAuth: latestVideoAuth,
+      );
+
+      final audio = Map<String, dynamic>.from(
+        info['audio'] as Map? ?? <String, dynamic>{},
+      );
+      final resolution = _normalizeResolution(
+        item['resolution']?.toString() ??
+            info['resolution']?.toString() ??
+            info['resoultion']?.toString(),
+      );
+      variants.add(
+        QuarkPlayableVariant(
+          resolution: resolution,
+          url: url,
+          headers: headers,
+          sizeBytes: (info['size'] as num?)?.toInt(),
+          width: (info['width'] as num?)?.toInt(),
+          height: (info['height'] as num?)?.toInt(),
+          audioCodec: audio['codec']?.toString(),
+        ),
+      );
     }
-    return '';
+    return variants;
   }
 
-  Map<String, String> _extractPlayableHeaders(Map<String, dynamic> data) {
-    final headers = <String, String>{};
-    final levelHeaders = data['headers'];
-    if (levelHeaders is Map) {
-      for (final entry in levelHeaders.entries) {
-        headers[entry.key.toString()] = entry.value.toString();
-      }
-    }
-    final list = data['video_list'];
-    if (list is List) {
-      for (final entry in list.whereType<Map>()) {
-        final item = Map<String, dynamic>.from(entry);
-        final info = Map<String, dynamic>.from(
-          item['video_info'] as Map? ?? <String, dynamic>{},
-        );
-        final infoHeaders = info['headers'];
-        if (infoHeaders is Map) {
-          for (final h in infoHeaders.entries) {
-            headers[h.key.toString()] = h.value.toString();
-          }
-          if (headers.isNotEmpty) {
-            return headers;
-          }
+  QuarkPlayableVariant _pickPreferredVariant(
+    List<QuarkPlayableVariant> variants,
+  ) {
+    const preferred = <String>['4k', '2k', 'super', 'high', 'normal', 'low'];
+    for (final resolution in preferred) {
+      for (final variant in variants) {
+        if (variant.resolution.toLowerCase() == resolution) {
+          return variant;
         }
       }
     }
-    return headers;
+    return variants.first;
+  }
+
+  String _normalizeResolution(String? resolution) {
+    final value = (resolution ?? '').trim();
+    if (value.isEmpty) return 'unknown';
+    return value.toLowerCase();
   }
 
   Map<String, String> _mergePlayableHeaders({

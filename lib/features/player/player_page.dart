@@ -2,6 +2,7 @@ import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:ma_palyer/app/app_route.dart';
+import 'package:ma_palyer/features/cloud/quark/quark_models.dart';
 import 'package:ma_palyer/features/playback/playback_models.dart';
 import 'package:ma_palyer/features/player/media_kit_player_controller.dart';
 import 'package:media_kit_video/media_kit_video.dart';
@@ -35,7 +36,6 @@ class _PlayerPageState extends State<PlayerPage> {
   bool _isLoading = false;
   String? _errorMessage;
 
-  List<ParsedMediaInfo> _allEpisodes = [];
   Map<String, List<ParsedMediaInfo>> _groupedEpisodes = {};
   List<String> _groupKeys = []; // Ordered group keys (e.g. "Season-Episode")
   PreparedEpisodeSelection? _preparedSelection;
@@ -43,6 +43,7 @@ class _PlayerPageState extends State<PlayerPage> {
   String? _currentGroupKey;
   ParsedMediaInfo? _currentPlayingEpisode;
   PlayableMedia? _currentMedia;
+  QuarkPlayableVariant? _currentCloudVariant;
 
   @override
   void initState() {
@@ -101,7 +102,6 @@ class _PlayerPageState extends State<PlayerPage> {
       }
 
       setState(() {
-        _allEpisodes = parsed;
         _groupedEpisodes = grouped;
         _groupKeys = keys.toList();
         _preparedSelection = prepared;
@@ -152,6 +152,8 @@ class _PlayerPageState extends State<PlayerPage> {
 
       setState(() {
         _currentMedia = media;
+        _currentCloudVariant =
+            media.selectedVariant ?? media.variants.firstOrNull;
       });
       await _openMedia(media);
     } catch (e) {
@@ -166,8 +168,10 @@ class _PlayerPageState extends State<PlayerPage> {
   void _showResolutionPicker() {
     final prepared = _preparedSelection;
     if (prepared == null) return;
-    if (_currentGroupKey == null || _groupedEpisodes[_currentGroupKey] == null)
+    if (_currentGroupKey == null ||
+        _groupedEpisodes[_currentGroupKey] == null) {
       return;
+    }
 
     final episodesInGroup = _groupedEpisodes[_currentGroupKey]!;
     if (episodesInGroup.isEmpty) return;
@@ -226,9 +230,138 @@ class _PlayerPageState extends State<PlayerPage> {
     );
   }
 
+  void _showCloudResolutionPicker() {
+    final media = _currentMedia;
+    if (media == null || media.variants.isEmpty) return;
+    final variants = media.variants;
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: const Color(0xFF1A2332),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Padding(
+                padding: EdgeInsets.all(16.0),
+                child: Text(
+                  '网盘清晰度',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+              const Divider(color: Color(0xFF2E3B56), height: 1),
+              ...variants.map((variant) {
+                final isCurrent = variant.url == _currentCloudVariant?.url;
+                return ListTile(
+                  title: Text(
+                    _cloudResolutionLabel(variant),
+                    style: TextStyle(
+                      color: isCurrent ? const Color(0xFFF47B25) : Colors.white,
+                      fontWeight: isCurrent
+                          ? FontWeight.bold
+                          : FontWeight.normal,
+                    ),
+                  ),
+                  subtitle: Text(
+                    _cloudResolutionMeta(variant),
+                    style: const TextStyle(color: Colors.white60, fontSize: 12),
+                  ),
+                  trailing: isCurrent
+                      ? const Icon(Icons.check, color: Color(0xFFF47B25))
+                      : null,
+                  onTap: () async {
+                    Navigator.pop(ctx);
+                    if (!isCurrent) {
+                      await _switchCloudResolution(variant);
+                    }
+                  },
+                );
+              }),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _switchCloudResolution(QuarkPlayableVariant variant) async {
+    final media = _currentMedia;
+    if (media == null) return;
+    setState(() {
+      _isLoading = true;
+      _currentCloudVariant = variant;
+    });
+    try {
+      await _playerController.open(
+        variant.url,
+        headers: variant.headers.isNotEmpty ? variant.headers : media.headers,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _errorMessage = '切换网盘清晰度失败: $e';
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  String _cloudResolutionLabel(QuarkPlayableVariant variant) {
+    final resolution = variant.resolution.toUpperCase();
+    if (resolution == 'UNKNOWN') {
+      return '未知清晰度';
+    }
+    return resolution;
+  }
+
+  String _cloudResolutionMeta(QuarkPlayableVariant variant) {
+    final parts = <String>[];
+    if (variant.sizeBytes != null && variant.sizeBytes! > 0) {
+      parts.add(_formatBytes(variant.sizeBytes!));
+    }
+    if ((variant.width ?? 0) > 0 && (variant.height ?? 0) > 0) {
+      parts.add('${variant.width}x${variant.height}');
+    }
+    final audioCodec = variant.audioCodec?.trim();
+    if (audioCodec != null && audioCodec.isNotEmpty) {
+      parts.add('音频:${audioCodec.toUpperCase()}');
+    } else {
+      parts.add('音频:未知');
+    }
+    return parts.join(' · ');
+  }
+
+  String _formatBytes(int bytes) {
+    const units = <String>['B', 'KB', 'MB', 'GB', 'TB'];
+    var value = bytes.toDouble();
+    var unitIndex = 0;
+    while (value >= 1024 && unitIndex < units.length - 1) {
+      value /= 1024;
+      unitIndex += 1;
+    }
+    final fixed = value >= 100
+        ? value.toStringAsFixed(0)
+        : value.toStringAsFixed(1);
+    return '$fixed ${units[unitIndex]}';
+  }
+
   Future<void> _openMedia(PlayableMedia media) async {
     setState(() {
       _isLoading = true;
+      _currentMedia = media;
+      _currentCloudVariant =
+          media.selectedVariant ?? media.variants.firstOrNull;
     });
     try {
       await _playerController.open(media.url, headers: media.headers);
@@ -320,12 +453,12 @@ class _PlayerPageState extends State<PlayerPage> {
           margin: const EdgeInsets.only(top: 16, left: 16),
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
-            color: const Color(0xFF1A2332).withOpacity(0.85),
+            color: const Color(0xFF1A2332).withValues(alpha: 0.85),
             borderRadius: BorderRadius.circular(8),
             border: Border.all(color: const Color(0xFF2E3B56)),
           ),
           child: Text(
-            '${_currentPlayingEpisode!.displayTitle}',
+            _currentPlayingEpisode!.displayTitle,
             style: const TextStyle(
               color: Colors.white,
               fontSize: 14,
@@ -524,6 +657,26 @@ class _PlayerPageState extends State<PlayerPage> {
                     ),
                     label: Text(
                       _currentPlayingEpisode?.displayResolution ?? 'Server 1',
+                      style: const TextStyle(color: Colors.white),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: Color(0xFF2E3B56)),
+                      backgroundColor: const Color(0xFF101622),
+                    ),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: _currentMedia?.variants.isNotEmpty == true
+                        ? _showCloudResolutionPicker
+                        : null,
+                    icon: const Icon(
+                      Icons.high_quality_rounded,
+                      size: 18,
+                      color: Color(0xFFF47B25),
+                    ),
+                    label: Text(
+                      _currentCloudVariant != null
+                          ? _cloudResolutionLabel(_currentCloudVariant!)
+                          : '网盘清晰度',
                       style: const TextStyle(color: Colors.white),
                     ),
                     style: OutlinedButton.styleFrom(

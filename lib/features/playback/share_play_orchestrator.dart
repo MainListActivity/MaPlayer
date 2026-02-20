@@ -192,6 +192,8 @@ class SharePlayOrchestrator {
       headers: playable.headers,
       subtitle: playable.subtitle,
       progressKey: '${prepared.request.shareUrl}:${selected.fileId}',
+      variants: playable.variants,
+      selectedVariant: playable.selectedVariant,
     );
 
     final now = DateTime.now().millisecondsSinceEpoch;
