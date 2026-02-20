@@ -4,8 +4,7 @@ import 'package:ma_palyer/app/app_route.dart';
 import 'package:ma_palyer/features/cloud/quark/quark_auth_service.dart';
 import 'package:ma_palyer/features/cloud/quark/quark_login_webview_page.dart';
 import 'package:ma_palyer/features/cloud/quark/quark_models.dart';
-import 'package:ma_palyer/features/history/play_history_models.dart';
-import 'package:ma_palyer/features/history/play_history_repository.dart';
+
 import 'package:ma_palyer/features/playback/episode_picker_sheet.dart';
 import 'package:ma_palyer/features/playback/share_play_orchestrator.dart';
 import 'package:ma_palyer/features/player/player_page.dart';
@@ -20,15 +19,12 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   final _configRepository = TvBoxConfigRepository();
-  final _historyRepository = PlayHistoryRepository();
   final _authService = QuarkAuthService();
   late final SharePlayOrchestrator _orchestrator;
 
   InAppWebViewController? _webController;
   String _currentUrl = 'https://www.wogg.net/';
-  String _statusText = '加载中...';
   bool _isBusy = false;
-  List<PlayHistoryItem> _recentItems = const <PlayHistoryItem>[];
 
   @override
   void initState() {
@@ -36,18 +32,18 @@ class _HomePageState extends State<HomePage> {
     _orchestrator = SharePlayOrchestrator(authService: _authService);
     TvBoxConfigRepository.configRevision.addListener(_onConfigRevisionChanged);
     _loadHomeUrl();
-    _loadRecent();
   }
 
   @override
   void dispose() {
-    TvBoxConfigRepository.configRevision.removeListener(_onConfigRevisionChanged);
+    TvBoxConfigRepository.configRevision.removeListener(
+      _onConfigRevisionChanged,
+    );
     super.dispose();
   }
 
   Future<void> _onConfigRevisionChanged() async {
     await _loadHomeUrl(forceReload: true);
-    await _loadRecent();
   }
 
   Future<void> _loadHomeUrl({bool forceReload = false}) async {
@@ -59,14 +55,6 @@ class _HomePageState extends State<HomePage> {
     if (forceReload && _webController != null) {
       await _webController!.loadUrl(urlRequest: URLRequest(url: WebUri(url)));
     }
-  }
-
-  Future<void> _loadRecent() async {
-    final recent = await _historyRepository.listRecent(limit: 10);
-    if (!mounted) return;
-    setState(() {
-      _recentItems = recent;
-    });
   }
 
   Future<void> _handlePlayRequest(Map<String, dynamic> payload) async {
@@ -83,7 +71,6 @@ class _HomePageState extends State<HomePage> {
 
     setState(() {
       _isBusy = true;
-      _statusText = '准备剧集列表...';
     });
 
     try {
@@ -104,36 +91,21 @@ class _HomePageState extends State<HomePage> {
         preferredFileId: prepared.preferredFileId,
       );
       if (selected == null) {
-        setState(() {
-          _statusText = '已取消';
-        });
         return;
       }
-      setState(() {
-        _statusText = '正在解析播放地址...';
-      });
+
       final media = await _orchestrator.playEpisode(prepared, selected);
       if (!mounted) return;
       await Navigator.pushNamed(
         context,
         AppRoutes.player,
-        arguments: PlayerPageArgs(
-          media: media,
-          title: prepared.request.title,
-        ),
+        arguments: PlayerPageArgs(media: media, title: prepared.request.title),
       );
-      await _loadRecent();
       if (!mounted) return;
-      setState(() {
-        _statusText = '播放完成';
-      });
     } catch (e) {
       final err = e.toString();
       _showSnack('处理失败: $err');
       if (!mounted) return;
-      setState(() {
-        _statusText = '处理失败: $err';
-      });
     } finally {
       if (mounted) {
         setState(() {
@@ -143,7 +115,9 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  Future<PreparedEpisodeSelection> _prepareWithLogin(SharePlayRequest request) async {
+  Future<PreparedEpisodeSelection> _prepareWithLogin(
+    SharePlayRequest request,
+  ) async {
     try {
       return await _orchestrator.prepareEpisodes(request);
     } on QuarkException catch (e) {
@@ -157,16 +131,6 @@ class _HomePageState extends State<HomePage> {
       }
       return _orchestrator.prepareEpisodes(request);
     }
-  }
-
-  Future<void> _openRecent(PlayHistoryItem item) async {
-    await _handlePlayRequest(<String, dynamic>{
-      'shareUrl': item.shareUrl,
-      'pageUrl': item.pageUrl,
-      'title': item.title,
-      'cover': item.coverUrl,
-      'intro': item.intro,
-    });
   }
 
   Future<void> _injectPlayButtons() async {
@@ -219,7 +183,30 @@ class _HomePageState extends State<HomePage> {
 
   void _showSnack(String text) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(text.length > 50 ? '${text.substring(0, 50)}...' : text),
+        duration: const Duration(seconds: 3),
+        action: SnackBarAction(
+          label: '详情',
+          onPressed: () {
+            showDialog<void>(
+              context: context,
+              builder: (ctx) => AlertDialog(
+                title: const Text('错误详情'),
+                content: SingleChildScrollView(child: Text(text)),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: const Text('关闭'),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      ),
+    );
   }
 
   @override
@@ -228,64 +215,6 @@ class _HomePageState extends State<HomePage> {
       padding: const EdgeInsets.all(12),
       child: Column(
         children: [
-          Container(
-            key: const Key('home-page-title'),
-            width: double.infinity,
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: const Color(0xFF192233),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: const Color(0xFF2E3B56)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('Home', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 4),
-                Text('站点: $_currentUrl', style: const TextStyle(color: Colors.white70)),
-                const SizedBox(height: 4),
-                Text('状态: $_statusText', style: const TextStyle(color: Colors.white70)),
-              ],
-            ),
-          ),
-          const SizedBox(height: 10),
-          if (_recentItems.isNotEmpty)
-            SizedBox(
-              height: 84,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                itemBuilder: (context, index) {
-                  final item = _recentItems[index];
-                  return InkWell(
-                    onTap: () => _openRecent(item),
-                    child: Container(
-                      width: 280,
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF1C2940),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(item.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-                          const SizedBox(height: 4),
-                          Text(
-                            item.lastEpisodeName ?? '点击选集',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(color: Colors.white70, fontSize: 12),
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                },
-                separatorBuilder: (context, index) => const SizedBox(width: 8),
-                itemCount: _recentItems.length,
-              ),
-            ),
-          const SizedBox(height: 10),
           Expanded(
             child: InAppWebViewPlatform.instance == null
                 ? Container(
@@ -295,7 +224,9 @@ class _HomePageState extends State<HomePage> {
                       borderRadius: BorderRadius.circular(12),
                     ),
                     alignment: Alignment.center,
-                    child: const Text('WebView unavailable in current environment'),
+                    child: const Text(
+                      'WebView unavailable in current environment',
+                    ),
                   )
                 : ClipRRect(
                     borderRadius: BorderRadius.circular(12),
@@ -322,7 +253,9 @@ class _HomePageState extends State<HomePage> {
                       },
                       onLoadStop: (controller, url) async {
                         await _injectPlayButtons();
-                        await Future<void>.delayed(const Duration(milliseconds: 300));
+                        await Future<void>.delayed(
+                          const Duration(milliseconds: 300),
+                        );
                         await _injectPlayButtons();
                       },
                     ),

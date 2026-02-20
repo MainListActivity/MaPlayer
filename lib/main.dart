@@ -3,6 +3,7 @@ import 'package:ma_palyer/app/app_bootstrap_page.dart';
 import 'package:ma_palyer/app/app_route.dart';
 import 'package:ma_palyer/app/app_shell.dart';
 import 'package:ma_palyer/features/home/home_page.dart';
+import 'package:ma_palyer/features/history/history_page.dart';
 import 'package:ma_palyer/features/movies/movies_page.dart';
 import 'package:ma_palyer/features/player/player_page.dart';
 import 'package:ma_palyer/features/settings/settings_page.dart';
@@ -56,6 +57,12 @@ class MaPlayerApp extends StatelessWidget {
           currentRoute: AppRoute.movies,
           child: const MoviesPage(),
         );
+      case AppRoutes.history:
+        return _buildMenuRoute(
+          settings: settings,
+          currentRoute: AppRoute.history,
+          child: const HistoryPage(),
+        );
       case AppRoutes.tvShows:
         return _buildMenuRoute(
           settings: settings,
@@ -70,10 +77,12 @@ class MaPlayerApp extends StatelessWidget {
         );
       case AppRoutes.player:
         final args = settings.arguments;
-        return _buildMenuRoute(
+        return PageRouteBuilder<void>(
           settings: settings,
-          currentRoute: AppRoute.player,
-          child: PlayerPage(args: args is PlayerPageArgs ? args : null),
+          pageBuilder: (_, __, ___) =>
+              PlayerPage(args: args is PlayerPageArgs ? args : null),
+          transitionDuration: Duration.zero,
+          reverseTransitionDuration: Duration.zero,
         );
       default:
         return MaterialPageRoute<void>(
@@ -83,14 +92,17 @@ class MaPlayerApp extends StatelessWidget {
     }
   }
 
-  MaterialPageRoute<void> _buildMenuRoute({
+  PageRouteBuilder<void> _buildMenuRoute({
     required RouteSettings settings,
     required AppRoute currentRoute,
     required Widget child,
   }) {
-    return MaterialPageRoute<void>(
+    return PageRouteBuilder<void>(
       settings: settings,
-      builder: (_) => AppShell(currentRoute: currentRoute, child: child),
+      pageBuilder: (_, __, ___) =>
+          AppShell(currentRoute: currentRoute, child: child),
+      transitionDuration: Duration.zero,
+      reverseTransitionDuration: Duration.zero,
     );
   }
 }

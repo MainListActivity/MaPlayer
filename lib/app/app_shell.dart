@@ -1,12 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:ma_palyer/app/app_route.dart';
 
 class AppShell extends StatelessWidget {
-  const AppShell({
-    super.key,
-    required this.currentRoute,
-    required this.child,
-  });
+  const AppShell({super.key, required this.currentRoute, required this.child});
 
   final AppRoute currentRoute;
   final Widget child;
@@ -20,52 +17,92 @@ class AppShell extends StatelessWidget {
     Navigator.pushReplacementNamed(context, AppRoutes.pathFor(targetRoute));
   }
 
-  void _onBackTap(BuildContext context) {
-    if (currentRoute == AppRoute.home) {
-      return;
-    }
-    Navigator.pushReplacementNamed(context, AppRoutes.home);
+  Widget _buildSidebar(BuildContext context) {
+    return Container(
+      width: 250,
+      color: const Color(0xFF192233),
+      child: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 30, 20, 20),
+              child: Row(
+                children: [
+                  SvgPicture.asset(
+                    'logo/ma_player_logo.svg',
+                    width: 32,
+                    height: 32,
+                  ),
+                  const SizedBox(width: 12),
+                  const Text(
+                    'Ma Player',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 10),
+            ...AppRoutes.menuItems.map((item) {
+              final selected = item.route == currentRoute;
+              return Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 4,
+                ),
+                child: TextButton.icon(
+                  key: Key('menu-${item.route.name}'),
+                  style: TextButton.styleFrom(
+                    alignment: Alignment.centerLeft,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 14,
+                    ),
+                    backgroundColor: selected
+                        ? const Color(0xFFF47B25).withOpacity(0.15)
+                        : Colors.transparent,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                  onPressed: () => _onMenuTap(context, item.route),
+                  icon: Icon(
+                    item.icon,
+                    size: 22,
+                    color: selected ? const Color(0xFFF47B25) : Colors.white70,
+                  ),
+                  label: Text(
+                    item.label,
+                    style: TextStyle(
+                      fontSize: 15,
+                      color: selected
+                          ? const Color(0xFFF47B25)
+                          : Colors.white70,
+                      fontWeight: selected ? FontWeight.bold : FontWeight.w500,
+                    ),
+                  ),
+                ),
+              );
+            }),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        automaticallyImplyLeading: false,
-        leading: currentRoute == AppRoute.home
-            ? null
-            : IconButton(
-                key: const Key('app-back-button'),
-                tooltip: 'Back',
-                icon: const Icon(Icons.arrow_back),
-                onPressed: () => _onBackTap(context),
-              ),
-        title: const Text('Ma Player'),
-        centerTitle: false,
-        actions: AppRoutes.menuItems.map((item) {
-          final selected = item.route == currentRoute;
-          return Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            child: TextButton.icon(
-              key: Key('menu-${item.route.name}'),
-              onPressed: () => _onMenuTap(context, item.route),
-              icon: Icon(
-                item.icon,
-                size: 18,
-                color: selected ? const Color(0xFFF47B25) : Colors.white70,
-              ),
-              label: Text(
-                item.label,
-                style: TextStyle(
-                  color: selected ? const Color(0xFFF47B25) : Colors.white70,
-                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                ),
-              ),
-            ),
-          );
-        }).toList(),
+      body: Row(
+        children: [
+          _buildSidebar(context),
+          Expanded(child: child),
+        ],
       ),
-      body: child,
     );
   }
 }
