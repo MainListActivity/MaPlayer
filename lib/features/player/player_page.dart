@@ -38,6 +38,7 @@ class _PlayerPageState extends State<PlayerPage> {
   List<ParsedMediaInfo> _allEpisodes = [];
   Map<String, List<ParsedMediaInfo>> _groupedEpisodes = {};
   List<String> _groupKeys = []; // Ordered group keys (e.g. "Season-Episode")
+  PreparedEpisodeSelection? _preparedSelection;
 
   String? _currentGroupKey;
   ParsedMediaInfo? _currentPlayingEpisode;
@@ -103,6 +104,7 @@ class _PlayerPageState extends State<PlayerPage> {
         _allEpisodes = parsed;
         _groupedEpisodes = grouped;
         _groupKeys = keys.toList();
+        _preparedSelection = prepared;
       });
 
       // Find the episode to play default
@@ -162,6 +164,8 @@ class _PlayerPageState extends State<PlayerPage> {
   }
 
   void _showResolutionPicker() {
+    final prepared = _preparedSelection;
+    if (prepared == null) return;
     if (_currentGroupKey == null || _groupedEpisodes[_currentGroupKey] == null)
       return;
 
@@ -210,26 +214,7 @@ class _PlayerPageState extends State<PlayerPage> {
                   onTap: () {
                     Navigator.pop(ctx);
                     if (!isCurrent) {
-                      _playParsedEpisode(
-                        PreparedEpisodeSelection(
-                          request: widget.args!.shareRequest!,
-                          showDirName: '',
-                          episodes: _allEpisodes
-                              .map(
-                                (e) => EpisodeCandidate(
-                                  fileId: e.id,
-                                  name: e.name,
-                                  selectedByDefault: false,
-                                ),
-                              )
-                              .toList(),
-                          preferredFileId: null,
-                          shareEpisodeMap: {
-                            for (var e in _allEpisodes) e.id: e.file,
-                          },
-                        ),
-                        ep,
-                      );
+                      _playParsedEpisode(prepared, ep);
                     }
                   },
                 );
@@ -728,30 +713,15 @@ class _PlayerPageState extends State<PlayerPage> {
 
                               return InkWell(
                                 onTap: () {
+                                  final prepared = _preparedSelection;
+                                  if (prepared == null) return;
                                   if (episodesInGroup.isNotEmpty &&
                                       !isPlaying) {
                                     if (onEpisodeSelected != null) {
                                       onEpisodeSelected();
                                     }
                                     _playParsedEpisode(
-                                      PreparedEpisodeSelection(
-                                        request: widget.args!.shareRequest!,
-                                        showDirName: '',
-                                        episodes: _allEpisodes
-                                            .map(
-                                              (e) => EpisodeCandidate(
-                                                fileId: e.id,
-                                                name: e.name,
-                                                selectedByDefault: false,
-                                              ),
-                                            )
-                                            .toList(),
-                                        preferredFileId: null,
-                                        shareEpisodeMap: {
-                                          for (var e in _allEpisodes)
-                                            e.id: e.file,
-                                        },
-                                      ),
+                                      prepared,
                                       episodesInGroup.first,
                                     );
                                   }

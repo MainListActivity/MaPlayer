@@ -39,6 +39,7 @@ class PreparedEpisodeSelection {
   const PreparedEpisodeSelection({
     required this.request,
     required this.showDirName,
+    required this.preferredFolderId,
     required this.episodes,
     required this.preferredFileId,
     required this.shareEpisodeMap,
@@ -46,6 +47,7 @@ class PreparedEpisodeSelection {
 
   final SharePlayRequest request;
   final String showDirName;
+  final String? preferredFolderId;
   final List<EpisodeCandidate> episodes;
   final String? preferredFileId;
   final Map<String, QuarkShareFileEntry> shareEpisodeMap;
@@ -78,7 +80,9 @@ class SharePlayOrchestrator {
 
     List<QuarkShareFileEntry> shareEpisodes;
     try {
-      shareEpisodes = await _transferService.listShareEpisodes(request.shareUrl);
+      shareEpisodes = await _transferService.listShareEpisodes(
+        request.shareUrl,
+      );
     } catch (_) {
       shareEpisodes = cached
           .map(
@@ -107,6 +111,7 @@ class SharePlayOrchestrator {
         coverHeaders: request.coverHeaders ?? const <String, String>{},
         intro: request.intro ?? '',
         showDirName: showDirName,
+        showFolderId: history?.showFolderId,
         lastEpisodeFileId: history?.lastEpisodeFileId,
         lastEpisodeName: history?.lastEpisodeName,
         cachedEpisodes: shareEpisodes
@@ -128,7 +133,8 @@ class SharePlayOrchestrator {
           (e) => EpisodeCandidate(
             fileId: e.fid,
             name: e.fileName,
-            selectedByDefault: preferredFileId != null && preferredFileId == e.fid,
+            selectedByDefault:
+                preferredFileId != null && preferredFileId == e.fid,
           ),
         )
         .toList();
@@ -136,11 +142,10 @@ class SharePlayOrchestrator {
     return PreparedEpisodeSelection(
       request: request,
       showDirName: showDirName,
+      preferredFolderId: history?.showFolderId,
       episodes: episodes,
       preferredFileId: preferredFileId,
-      shareEpisodeMap: {
-        for (final item in shareEpisodes) item.fid: item,
-      },
+      shareEpisodeMap: {for (final item in shareEpisodes) item.fid: item},
     );
   }
 
@@ -153,10 +158,7 @@ class SharePlayOrchestrator {
       throw PlaybackException('选集信息已失效，请重新打开选集', code: 'EPISODE_STALE');
     }
 
-    final folder = await _transferService.findOrCreateShowFolder(
-      '/MaPlayer',
-      prepared.showDirName,
-    );
+    final folder = await _resolveShowFolder(prepared);
 
     QuarkFileEntry? selectedSaved = await _findSavedFileByName(
       rootFolderId: folder.folderId,
@@ -177,9 +179,14 @@ class SharePlayOrchestrator {
     if (selectedSaved == null) {
       throw PlaybackException('转存后未找到选中剧集文件', code: 'EPISODE_SAVE_MISSING');
     }
-    await _transferService.clearFolderExcept(folder.folderId, selectedSaved.fileId);
+    await _transferService.clearFolderExcept(
+      folder.folderId,
+      selectedSaved.fileId,
+    );
 
-    final playable = await _transferService.resolvePlayableFile(selectedSaved.fileId);
+    final playable = await _transferService.resolvePlayableFile(
+      selectedSaved.fileId,
+    );
     final media = PlayableMedia(
       url: playable.url,
       headers: playable.headers,
@@ -188,7 +195,9 @@ class SharePlayOrchestrator {
     );
 
     final now = DateTime.now().millisecondsSinceEpoch;
-    final current = await _historyRepository.findByShareUrl(prepared.request.shareUrl);
+    final current = await _historyRepository.findByShareUrl(
+      prepared.request.shareUrl,
+    );
     await _historyRepository.upsertByShareUrl(
       PlayHistoryItem(
         shareUrl: prepared.request.shareUrl,
@@ -198,6 +207,7 @@ class SharePlayOrchestrator {
         coverHeaders: prepared.request.coverHeaders ?? const <String, String>{},
         intro: prepared.request.intro ?? '',
         showDirName: prepared.showDirName,
+        showFolderId: folder.folderId,
         lastEpisodeFileId: selected.fileId,
         lastEpisodeName: selected.name,
         cachedEpisodes: current?.cachedEpisodes ?? const <PlayHistoryEpisode>[],
@@ -205,6 +215,29 @@ class SharePlayOrchestrator {
       ),
     );
     return media;
+  }
+
+  Future<QuarkFolderLookupResult> _resolveShowFolder(
+    PreparedEpisodeSelection prepared,
+  ) async {
+    final savedFolderId = prepared.preferredFolderId?.trim() ?? '';
+    if (savedFolderId.isNotEmpty) {
+      try {
+        await _transferService.listFilesInFolder(savedFolderId);
+        return QuarkFolderLookupResult(
+          folderId: savedFolderId,
+          folderName: prepared.showDirName,
+          created: false,
+          path: '/MaPlayer/${prepared.showDirName}',
+        );
+      } catch (_) {
+        // Fall through to locate folder by path when cached id is stale.
+      }
+    }
+    return _transferService.findOrCreateShowFolder(
+      '/MaPlayer',
+      prepared.showDirName,
+    );
   }
 
   Future<QuarkFileEntry?> _findSavedFileByName({
@@ -263,7 +296,10 @@ class SharePlayOrchestrator {
     return null;
   }
 
-  QuarkFileEntry? _pickSavedFile(List<QuarkFileEntry> files, String preferredName) {
+  QuarkFileEntry? _pickSavedFile(
+    List<QuarkFileEntry> files,
+    String preferredName,
+  ) {
     for (final file in files) {
       if (!file.isDirectory && file.fileName == preferredName) {
         return file;
@@ -279,7 +315,9 @@ class SharePlayOrchestrator {
 
   void _validateShareUrl(String shareUrl) {
     final uri = Uri.tryParse(shareUrl);
-    if (uri == null || uri.host != 'pan.quark.cn' || !uri.path.startsWith('/s/')) {
+    if (uri == null ||
+        uri.host != 'pan.quark.cn' ||
+        !uri.path.startsWith('/s/')) {
       throw PlaybackException('无效夸克分享链接', code: 'SHARE_URL_INVALID');
     }
   }

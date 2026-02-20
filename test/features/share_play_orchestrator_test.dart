@@ -12,7 +12,9 @@ class _FakeAuthService extends QuarkAuthService {
     return QuarkAuthState(
       accessToken: 'a',
       refreshToken: 'r',
-      expiresAtEpochMs: DateTime.now().add(const Duration(hours: 1)).millisecondsSinceEpoch,
+      expiresAtEpochMs: DateTime.now()
+          .add(const Duration(hours: 1))
+          .millisecondsSinceEpoch,
     );
   }
 }
@@ -20,9 +22,11 @@ class _FakeAuthService extends QuarkAuthService {
 class _FakeTransferService extends QuarkTransferService {
   _FakeTransferService() : super(authService: _FakeAuthService());
 
+  int findOrCreateCount = 0;
   bool savedSelected = false;
   bool clearedBeforeSave = false;
   bool clearedAfterSave = false;
+  String? lastListedFolderId;
   List<QuarkShareFileEntry> shareEpisodes = const <QuarkShareFileEntry>[
     QuarkShareFileEntry(
       fid: 's1',
@@ -45,7 +49,11 @@ class _FakeTransferService extends QuarkTransferService {
   ];
 
   @override
-  Future<QuarkFolderLookupResult> findOrCreateShowFolder(String rootDir, String showDirName) async {
+  Future<QuarkFolderLookupResult> findOrCreateShowFolder(
+    String rootDir,
+    String showDirName,
+  ) async {
+    findOrCreateCount += 1;
     return QuarkFolderLookupResult(
       folderId: 'folder1',
       folderName: showDirName,
@@ -82,13 +90,17 @@ class _FakeTransferService extends QuarkTransferService {
 
   @override
   Future<List<QuarkFileEntry>> listFilesInFolder(String folderId) async {
+    lastListedFolderId = folderId;
     return files;
   }
 
   @override
   Future<QuarkPlayableFile> resolvePlayableFile(String savedFileId) async {
     expect(savedFileId, 'd2');
-    return const QuarkPlayableFile(url: 'https://play.example.com/2.m3u8', headers: <String, String>{});
+    return const QuarkPlayableFile(
+      url: 'https://play.example.com/2.m3u8',
+      headers: <String, String>{},
+    );
   }
 }
 
@@ -96,7 +108,8 @@ class _MemoryHistoryRepository extends PlayHistoryRepository {
   final Map<String, PlayHistoryItem> map = <String, PlayHistoryItem>{};
 
   @override
-  Future<PlayHistoryItem?> findByShareUrl(String shareUrl) async => map[shareUrl];
+  Future<PlayHistoryItem?> findByShareUrl(String shareUrl) async =>
+      map[shareUrl];
 
   @override
   Future<List<PlayHistoryItem>> listRecent({int limit = 50}) async {
@@ -133,34 +146,90 @@ void main() {
     expect(prepared.episodes.first.name, '第1集.mp4');
     final saved = await history.findByShareUrl('https://pan.quark.cn/s/abc');
     expect(saved?.cachedEpisodes.length, 2);
+    expect(saved?.showFolderId, isNull);
   });
 
-  test('playEpisode skips transfer when selected episode already exists', () async {
-    final transfer = _FakeTransferService();
-    final history = _MemoryHistoryRepository();
-    final orchestrator = SharePlayOrchestrator(
-      authService: _FakeAuthService(),
-      transferService: transfer,
-      historyRepository: history,
-    );
+  test(
+    'playEpisode skips transfer when selected episode already exists',
+    () async {
+      final transfer = _FakeTransferService();
+      final history = _MemoryHistoryRepository();
+      final orchestrator = SharePlayOrchestrator(
+        authService: _FakeAuthService(),
+        transferService: transfer,
+        historyRepository: history,
+      );
 
-    final prepared = await orchestrator.prepareEpisodes(
-      const SharePlayRequest(
+      final prepared = await orchestrator.prepareEpisodes(
+        const SharePlayRequest(
+          shareUrl: 'https://pan.quark.cn/s/abc',
+          pageUrl: 'https://www.wogg.net/v/1',
+          title: '测试剧',
+        ),
+      );
+      final selected = prepared.episodes[1];
+      final media = await orchestrator.playEpisode(prepared, selected);
+
+      expect(media.url, 'https://play.example.com/2.m3u8');
+      expect(transfer.clearedBeforeSave, isFalse);
+      expect(transfer.savedSelected, isFalse);
+      expect(transfer.clearedAfterSave, isTrue);
+      expect(transfer.findOrCreateCount, 1);
+
+      final saved = await history.findByShareUrl('https://pan.quark.cn/s/abc');
+      expect(saved?.lastEpisodeFileId, 's2');
+      expect(saved?.lastEpisodeName, '第2集.mp4');
+      expect(saved?.showFolderId, 'folder1');
+    },
+  );
+
+  test(
+    'playEpisode reuses recorded folder id before fallback to find/create',
+    () async {
+      final transfer = _FakeTransferService();
+      final history = _MemoryHistoryRepository();
+      history.map['https://pan.quark.cn/s/abc'] = const PlayHistoryItem(
         shareUrl: 'https://pan.quark.cn/s/abc',
         pageUrl: 'https://www.wogg.net/v/1',
         title: '测试剧',
-      ),
-    );
-    final selected = prepared.episodes[1];
-    final media = await orchestrator.playEpisode(prepared, selected);
+        coverUrl: '',
+        intro: '',
+        showDirName: '测试剧',
+        showFolderId: 'folder_cached',
+        updatedAtEpochMs: 1,
+        cachedEpisodes: <PlayHistoryEpisode>[
+          PlayHistoryEpisode(
+            fileId: 's1',
+            name: '第1集.mp4',
+            shareFidToken: 't1',
+          ),
+          PlayHistoryEpisode(
+            fileId: 's2',
+            name: '第2集.mp4',
+            shareFidToken: 't2',
+          ),
+        ],
+      );
 
-    expect(media.url, 'https://play.example.com/2.m3u8');
-    expect(transfer.clearedBeforeSave, isFalse);
-    expect(transfer.savedSelected, isFalse);
-    expect(transfer.clearedAfterSave, isTrue);
+      final orchestrator = SharePlayOrchestrator(
+        authService: _FakeAuthService(),
+        transferService: transfer,
+        historyRepository: history,
+      );
 
-    final saved = await history.findByShareUrl('https://pan.quark.cn/s/abc');
-    expect(saved?.lastEpisodeFileId, 's2');
-    expect(saved?.lastEpisodeName, '第2集.mp4');
-  });
+      final prepared = await orchestrator.prepareEpisodes(
+        const SharePlayRequest(
+          shareUrl: 'https://pan.quark.cn/s/abc',
+          pageUrl: 'https://www.wogg.net/v/1',
+          title: '测试剧',
+        ),
+      );
+      final selected = prepared.episodes[1];
+      await orchestrator.playEpisode(prepared, selected);
+
+      expect(prepared.preferredFolderId, 'folder_cached');
+      expect(transfer.findOrCreateCount, 0);
+      expect(transfer.lastListedFolderId, 'folder_cached');
+    },
+  );
 }

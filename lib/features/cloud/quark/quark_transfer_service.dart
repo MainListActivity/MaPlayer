@@ -39,32 +39,35 @@ class QuarkTransferService {
     String rootDir,
     String showDirName,
   ) async {
+    final normalizedShowDirName = showDirName.trim().isEmpty
+        ? 'untitled_show'
+        : showDirName.trim();
     final auth = await _authService.ensureValidToken();
     final rootFolder = await _findOrCreateFolderByPath(auth, rootDir);
     final showFolder = await _findChildFolderByName(
       auth,
       rootFolder.fileId,
-      showDirName,
+      normalizedShowDirName,
     );
     if (showFolder != null) {
       return QuarkFolderLookupResult(
         folderId: showFolder.fileId,
         folderName: showFolder.fileName,
         created: false,
-        path: '$rootDir/$showDirName',
+        path: '$rootDir/$normalizedShowDirName',
       );
     }
 
     final createdFolder = await _createFolder(
       auth,
       rootFolder.fileId,
-      showDirName,
+      normalizedShowDirName,
     );
     return QuarkFolderLookupResult(
       folderId: createdFolder.fileId,
       folderName: createdFolder.fileName,
       created: true,
-      path: '$rootDir/$showDirName',
+      path: '$rootDir/$normalizedShowDirName',
     );
   }
 
@@ -854,7 +857,7 @@ class QuarkTransferService {
             '_page': '$page',
             '_size': '50',
             '_fetch_banner': '0',
-            '_fetch_share': '0',
+            '_fetch_share': '1',
             '_fetch_total': '1',
             '_sort': 'file_type:asc,updated_at:desc',
           },
@@ -942,7 +945,10 @@ class QuarkTransferService {
   String _pickPlayableUrlFromVideoList(Map<String, dynamic> data) {
     final list = data['video_list'];
     if (list is! List) return '';
-    final videos = list.whereType<Map>().map(Map<String, dynamic>.from).toList();
+    final videos = list
+        .whereType<Map>()
+        .map(Map<String, dynamic>.from)
+        .toList();
     if (videos.isEmpty) return '';
 
     const preferred = <String>['super', 'high', 'normal', 'low', '2k', '4k'];
