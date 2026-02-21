@@ -37,3 +37,19 @@ class ProxyStatsSnapshot {
   final ProxyMode mode;
   final DateTime updatedAt;
 }
+
+class ProxyAggregateStats {
+  const ProxyAggregateStats({
+    required this.proxyRunning,
+    required this.downloadBps,
+    required this.bufferedBytesAhead,
+    required this.activeWorkers,
+    required this.updatedAt,
+  });
+
+  final bool proxyRunning;
+  final double downloadBps;
+  final int bufferedBytesAhead;
+  final int activeWorkers;
+  final DateTime updatedAt;
+}

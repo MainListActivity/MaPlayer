@@ -49,7 +49,7 @@ class _PlayerPageState extends State<PlayerPage> {
   QuarkPlayableVariant? _currentCloudVariant;
 
   StreamSubscription<bool>? _bufferingSub;
-  StreamSubscription<ProxyStatsSnapshot>? _proxyStatsSub;
+  StreamSubscription<ProxyAggregateStats>? _proxyStatsSub;
   String? _proxySessionId;
   bool _isBufferingNow = false;
   String _networkSpeedLabel = '--';
@@ -63,6 +63,7 @@ class _PlayerPageState extends State<PlayerPage> {
     _videoController = VideoController(_playerController.player);
     _orchestrator = SharePlayOrchestrator();
     _bindPlayerStreams();
+    _bindProxyStats();
 
     final args = widget.args;
     if (args != null) {
@@ -97,23 +98,20 @@ class _PlayerPageState extends State<PlayerPage> {
     });
   }
 
-  void _bindProxyStats(String? sessionId) {
+  void _bindProxyStats() {
     _proxyStatsSub?.cancel();
-    if (sessionId == null) {
+    _proxyStatsSub = ProxyController.instance.watchAggregateStats().listen((s) {
       if (!mounted) return;
       setState(() {
-        _networkSpeedLabel = '--';
-        _bufferAheadLabel = '预读: --';
-        _proxyModeLabel = '';
-      });
-      return;
-    }
-    _proxyStatsSub = ProxyController.instance.watchStats(sessionId).listen((s) {
-      if (!mounted) return;
-      setState(() {
+        if (!s.proxyRunning) {
+          _networkSpeedLabel = '--';
+          _bufferAheadLabel = '预读: --';
+          _proxyModeLabel = '';
+          return;
+        }
         _networkSpeedLabel = _formatBitsPerSecond(s.downloadBps);
         _bufferAheadLabel = '预读: ${_formatBytes(s.bufferedBytesAhead)}';
-        _proxyModeLabel = s.mode == ProxyMode.parallel ? '并发' : '单连接';
+        _proxyModeLabel = s.activeWorkers > 0 ? '并发: ${s.activeWorkers}' : '';
       });
     });
   }
@@ -430,14 +428,19 @@ class _PlayerPageState extends State<PlayerPage> {
           media.selectedVariant ?? media.variants.firstOrNull;
     });
     try {
-      final endpoint = await ProxyController.instance.createSession(
-        media,
-        fileKey: media.progressKey,
-      );
+      final shouldUseProxy = _shouldUseProxy(media);
+      final endpoint = shouldUseProxy
+          ? await ProxyController.instance.createSession(
+              media,
+              fileKey: media.progressKey,
+            )
+          : ResolvedPlaybackEndpoint(
+              originalMedia: media,
+              playbackUrl: media.url,
+            );
       final prevSessionId = _proxySessionId;
       final currentSessionId = endpoint.proxySession?.sessionId;
       _proxySessionId = currentSessionId;
-      _bindProxyStats(currentSessionId);
       // For URLs that bypass the proxy (m3u8, non-mp4), pass auth headers
       // directly to media_kit so it can authenticate with the CDN.
       final playHeaders =
@@ -464,6 +467,16 @@ class _PlayerPageState extends State<PlayerPage> {
         });
       }
     }
+  }
+
+  bool _shouldUseProxy(PlayableMedia media) {
+    final resolution = media.selectedVariant?.resolution.toLowerCase().trim();
+    if (resolution != null &&
+        (resolution == 'raw' || resolution.contains('raw'))) {
+      return true;
+    }
+    final url = media.url.toLowerCase();
+    return url.contains('/file/download');
   }
 
   void _showEpisodesDialog() {

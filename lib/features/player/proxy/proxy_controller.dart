@@ -20,7 +20,13 @@ class ProxyController {
   static const int _maxCacheBytes = 2 * 1024 * 1024 * 1024;
 
   final Map<String, _ProxySession> _sessions = <String, _ProxySession>{};
+  final StreamController<ProxyAggregateStats> _aggregateStatsController =
+      StreamController<ProxyAggregateStats>.broadcast();
   LocalStreamProxyServer? _server;
+  Timer? _aggregateStatsTimer;
+  int _aggregateDownloadedBytesTotal = 0;
+  int _aggregateDownloadedBytesLast = 0;
+  DateTime _aggregateStatsLastAt = DateTime.now();
 
   bool get _isSupportedPlatform => Platform.isMacOS || Platform.isWindows;
 
@@ -39,6 +45,7 @@ class ProxyController {
       logger: _log,
     );
     await _server!.start();
+    _ensureAggregateTicker();
 
     if (_isM3u8Like(media.url)) {
       return ResolvedPlaybackEndpoint(
@@ -91,6 +98,7 @@ class ProxyController {
       cacheRoot: cacheRoot,
       streamUrl: _server!.urlForSession(sessionId),
       logger: _log,
+      onDownloadBytes: _recordAggregateDownloadedBytes,
       chunkSize: _chunkSize,
       maxConcurrency: _maxConcurrency,
       aheadWindowBytes: _aheadWindowBytes,
@@ -98,6 +106,7 @@ class ProxyController {
     );
     await session.initialize();
     _sessions[sessionId] = session;
+    _emitAggregateSnapshot();
 
     return ResolvedPlaybackEndpoint(
       originalMedia: media,
@@ -114,10 +123,17 @@ class ProxyController {
     return session.statsStream;
   }
 
+  Stream<ProxyAggregateStats> watchAggregateStats() {
+    _ensureAggregateTicker();
+    _emitAggregateSnapshot();
+    return _aggregateStatsController.stream;
+  }
+
   Future<void> closeSession(String sessionId) async {
     final session = _sessions.remove(sessionId);
     if (session != null) {
       await session.dispose();
+      _emitAggregateSnapshot();
     }
   }
 
@@ -127,12 +143,62 @@ class ProxyController {
     for (final session in entries) {
       await session.dispose();
     }
+    _emitAggregateSnapshot();
   }
 
   Future<void> dispose() async {
     await invalidateAll();
+    _aggregateStatsTimer?.cancel();
+    _aggregateStatsTimer = null;
+    if (!_aggregateStatsController.isClosed) {
+      await _aggregateStatsController.close();
+    }
     await _server?.stop();
     _server = null;
+  }
+
+  void _ensureAggregateTicker() {
+    if (_aggregateStatsTimer != null) return;
+    _aggregateStatsLastAt = DateTime.now();
+    _aggregateDownloadedBytesLast = _aggregateDownloadedBytesTotal;
+    _aggregateStatsTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      _emitAggregateSnapshot();
+    });
+  }
+
+  void _recordAggregateDownloadedBytes(int bytes) {
+    if (bytes <= 0) return;
+    _aggregateDownloadedBytesTotal += bytes;
+  }
+
+  void _emitAggregateSnapshot() {
+    if (_aggregateStatsController.isClosed) return;
+    final now = DateTime.now();
+    final elapsedMs = max(
+      1,
+      now.difference(_aggregateStatsLastAt).inMilliseconds,
+    );
+    final downloadDelta =
+        _aggregateDownloadedBytesTotal - _aggregateDownloadedBytesLast;
+    final downloadBps = downloadDelta * 8000.0 / elapsedMs;
+    _aggregateStatsLastAt = now;
+    _aggregateDownloadedBytesLast = _aggregateDownloadedBytesTotal;
+    var bufferedBytesAhead = 0;
+    var activeWorkers = 0;
+    for (final session in _sessions.values) {
+      final latest = session.latestSnapshot;
+      bufferedBytesAhead += latest.bufferedBytesAhead;
+      activeWorkers += latest.activeWorkers;
+    }
+    _aggregateStatsController.add(
+      ProxyAggregateStats(
+        proxyRunning: _server != null,
+        downloadBps: downloadBps,
+        bufferedBytesAhead: bufferedBytesAhead,
+        activeWorkers: activeWorkers,
+        updatedAt: DateTime.now(),
+      ),
+    );
   }
 
   Future<void> _handleStreamRequest(
@@ -155,13 +221,15 @@ class ProxyController {
     Map<String, String> headers, {
     String? fileKey,
   }) {
-    // Use only stable identifiers (URL + fileKey) so that time-sensitive
-    // auth tokens (Video-Auth, cookies) don't bust the disk cache on every
-    // session open.  Headers are not part of the cache key.
-    final buffer = StringBuffer(sourceUrl);
+    // Prefer the stable cloud-file identity when available, so signed/raw
+    // URLs that rotate query tokens still reuse the same disk cache.
+    final buffer = StringBuffer();
     if (fileKey != null && fileKey.isNotEmpty) {
-      buffer.write('|');
+      buffer.write('file:');
       buffer.write(fileKey);
+    } else {
+      buffer.write('url:');
+      buffer.write(sourceUrl);
     }
     return md5.convert(utf8.encode(buffer.toString())).toString();
   }
@@ -279,7 +347,7 @@ class LocalStreamProxyServer {
 
   Future<void> _handle(HttpRequest request) async {
     final path = request.uri.path;
-    if (request.method != 'GET') {
+    if (request.method != 'GET' && request.method != 'HEAD') {
       request.response.statusCode = HttpStatus.notFound;
       request.response.write('not found');
       await request.response.close();
@@ -293,6 +361,10 @@ class LocalStreamProxyServer {
         await request.response.close();
         return;
       }
+      logger(
+        'incoming request: method=${request.method} path=$path '
+        'range=${request.headers.value(HttpHeaders.rangeHeader) ?? ''}',
+      );
       await onStreamRequest(request, sessionId);
       return;
     }
@@ -311,6 +383,7 @@ class _ProxySession {
     required this.cacheRoot,
     required this.streamUrl,
     required this.logger,
+    required this.onDownloadBytes,
     required this.chunkSize,
     required this.maxConcurrency,
     required this.aheadWindowBytes,
@@ -325,6 +398,7 @@ class _ProxySession {
   final Directory cacheRoot;
   final String streamUrl;
   final void Function(String message) logger;
+  final void Function(int bytes) onDownloadBytes;
   final int chunkSize;
   final int maxConcurrency;
   final int aheadWindowBytes;
@@ -369,8 +443,10 @@ class _ProxySession {
   int _cacheHitBytes = 0;
 
   String? _contentType;
+  late ProxyStatsSnapshot _latestSnapshot;
 
   Stream<ProxyStatsSnapshot> get statsStream => _statsController.stream;
+  ProxyStatsSnapshot get latestSnapshot => _latestSnapshot;
 
   ProxySessionDescriptor get descriptor => ProxySessionDescriptor(
     sessionId: sessionId,
@@ -460,6 +536,16 @@ class _ProxySession {
     _statsLastSampleAt = DateTime.now();
     _downloadBytesLastSample = _downloadBytesTotal;
     _serveBytesLastSample = _serveBytesTotal;
+    _latestSnapshot = ProxyStatsSnapshot(
+      sessionId: sessionId,
+      downloadBps: 0,
+      serveBps: 0,
+      cacheHitRate: 0,
+      activeWorkers: _activeWorkers,
+      bufferedBytesAhead: _bufferedBytesAhead(),
+      mode: _mode,
+      updatedAt: DateTime.now(),
+    );
 
     _statsTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (_statsController.isClosed) return;
@@ -482,6 +568,7 @@ class _ProxySession {
       _statsLastSampleAt = now;
       _downloadBytesLastSample = _downloadBytesTotal;
       _serveBytesLastSample = _serveBytesTotal;
+      _latestSnapshot = snapshot;
       if (!_statsController.isClosed) {
         _statsController.add(snapshot);
       }
@@ -503,6 +590,10 @@ class _ProxySession {
       final parsedRange = _parseRangeHeader(
         request.headers.value(HttpHeaders.rangeHeader),
       );
+      if (request.method == 'HEAD') {
+        await _serveHead(request, parsedRange);
+        return;
+      }
       if (_mode == ProxyMode.single) {
         await _serveSingle(request, parsedRange);
         return;
@@ -574,6 +665,47 @@ class _ProxySession {
     await request.response.close();
   }
 
+  Future<void> _serveHead(HttpRequest request, _RequestRange? range) async {
+    final length = _contentLength;
+    final contentType = _contentType ?? 'video/mp4';
+    if (length == null || length <= 0) {
+      request.response.statusCode = HttpStatus.ok;
+      request.response.headers.set(HttpHeaders.contentTypeHeader, contentType);
+      request.response.headers.set(HttpHeaders.acceptRangesHeader, 'bytes');
+      await request.response.close();
+      return;
+    }
+
+    final requested = _normalizeRequestedRange(range, length);
+    if (requested == null) {
+      request.response.statusCode = HttpStatus.requestedRangeNotSatisfiable;
+      request.response.headers.set(
+        HttpHeaders.contentRangeHeader,
+        'bytes */$length',
+      );
+      await request.response.close();
+      return;
+    }
+
+    final partial = !(requested.start == 0 && requested.end == length - 1);
+    request.response.statusCode = partial
+        ? HttpStatus.partialContent
+        : HttpStatus.ok;
+    request.response.headers.set(HttpHeaders.acceptRangesHeader, 'bytes');
+    request.response.headers.set(HttpHeaders.contentTypeHeader, contentType);
+    request.response.headers.set(
+      HttpHeaders.contentLengthHeader,
+      '${requested.end! - requested.start + 1}',
+    );
+    if (partial) {
+      request.response.headers.set(
+        HttpHeaders.contentRangeHeader,
+        'bytes ${requested.start}-${requested.end!}/$length',
+      );
+    }
+    await request.response.close();
+  }
+
   Future<void> _serveParallel(HttpRequest request, _RequestRange? range) async {
     final length = _contentLength;
     if (length == null || length <= 0) {
@@ -627,10 +759,12 @@ class _ProxySession {
       HttpHeaders.contentLengthHeader,
       '${requested.end! - requested.start + 1}',
     );
-    request.response.headers.set(
-      HttpHeaders.contentRangeHeader,
-      'bytes ${requested.start}-${requested.end!}/$length',
-    );
+    if (statusCode == HttpStatus.partialContent) {
+      request.response.headers.set(
+        HttpHeaders.contentRangeHeader,
+        'bytes ${requested.start}-${requested.end!}/$length',
+      );
+    }
 
     final raf = await _cacheFile.open(mode: FileMode.read);
     var degraded = false;
@@ -688,6 +822,7 @@ class _ProxySession {
         _recordServedBytes(data.length);
         request.response.add(data);
         offset += data.length;
+        _playbackOffset = offset;
       }
     } finally {
       await raf.close();
@@ -1072,6 +1207,7 @@ class _ProxySession {
   void _recordDownloadedBytes(int bytes) {
     if (bytes <= 0) return;
     _downloadBytesTotal += bytes;
+    onDownloadBytes(bytes);
   }
 
   void _recordServedBytes(int bytes) {
