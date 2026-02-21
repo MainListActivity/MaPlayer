@@ -779,6 +779,7 @@ class _ProxySession {
   }
 
   void _scheduleMeta() {
+    if (_isDisposing || _isDisposed) return;
     _metaDebounceTimer?.cancel();
     _metaDebounceTimer = Timer(const Duration(seconds: 5), () {
       unawaited(_writeMeta());
