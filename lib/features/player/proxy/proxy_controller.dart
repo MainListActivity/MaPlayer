@@ -18,6 +18,7 @@ class ProxyController {
   static const int _sessionCacheWindowBytes = 500 * 1024 * 1024;
   static const int _priorityBufferSeconds = 120;
   static const int _maxOpenEndedResponseBytes = 64 * 1024 * 1024;
+  static const int _startupProbeOpenEndedResponseBytes = 2 * 1024 * 1024;
   static const int _maxCacheBytes = 2 * 1024 * 1024 * 1024;
 
   final Map<String, _ProxySession> _sessions = <String, _ProxySession>{};
@@ -110,6 +111,7 @@ class ProxyController {
       priorityBufferSeconds:
           debugPriorityBufferSecondsOverride ?? _priorityBufferSeconds,
       maxOpenEndedResponseBytes: _maxOpenEndedResponseBytes,
+      startupProbeOpenEndedResponseBytes: _startupProbeOpenEndedResponseBytes,
     );
     await session.initialize();
     _sessions[sessionId] = session;
@@ -406,6 +408,7 @@ class _ProxySession {
     required this.sessionCacheWindowBytes,
     required this.priorityBufferSeconds,
     required this.maxOpenEndedResponseBytes,
+    required this.startupProbeOpenEndedResponseBytes,
   }) : _client = HttpClient(),
        _semaphore = _AsyncSemaphore(maxConcurrency);
 
@@ -422,6 +425,7 @@ class _ProxySession {
   final int sessionCacheWindowBytes;
   final int priorityBufferSeconds;
   final int maxOpenEndedResponseBytes;
+  final int startupProbeOpenEndedResponseBytes;
   static const bool _verboseUpstreamHeaderLogs = false;
 
   final HttpClient _client;
@@ -841,7 +845,7 @@ class _ProxySession {
       return;
     }
 
-    final requested = _normalizeRequestedRange(
+    var requested = _normalizeRequestedRange(
       range,
       length,
       maxOpenEndedBytes: maxOpenEndedResponseBytes,
@@ -883,7 +887,7 @@ class _ProxySession {
       return;
     }
 
-    final requested = _normalizeRequestedRange(
+    var requested = _normalizeRequestedRange(
       range,
       length,
       maxOpenEndedBytes: maxOpenEndedResponseBytes,
@@ -901,14 +905,28 @@ class _ProxySession {
     final previousOffset = _playbackOffset;
     final previousRequestStart = _lastRequestStartForSeek;
     final previousRequestEnd = _lastRequestEndForSeek;
-    _updateSeekDetectionState(requested.start, requested.end!);
-    _updatePlaybackRate(requested.start);
 
     // Detect seek only after startup warmup and stable sequential playback.
     var isSeek = false;
+    final openEndedRequested = range?.end == null;
     final seekBaseline = previousRequestStart ?? previousOffset;
     final probeJump = _isLikelyProbeJump(seekBaseline, requested.start, length);
     final startupProbeJump = probeJump && !_seekDetectionEnabled;
+    if (startupProbeJump && openEndedRequested) {
+      final clampedEnd = min(
+        length - 1,
+        requested.start + startupProbeOpenEndedResponseBytes - 1,
+      );
+      if (clampedEnd < requested.end!) {
+        requested = _RequestRange(start: requested.start, end: clampedEnd);
+        logger(
+          'session=$sessionId startup probe clamp: '
+          'start=${requested.start}, end=${requested.end}',
+        );
+      }
+    }
+    _updateSeekDetectionState(requested.start, requested.end!);
+    _updatePlaybackRate(requested.start);
     if (!startupProbeJump) {
       _updateCacheWindow(requested.start);
     } else {
@@ -1014,7 +1032,13 @@ class _ProxySession {
         final chunkIndex = offset ~/ chunkSize;
         final chunkReady = await _ensureChunkReady(chunkIndex);
         if (!chunkReady || _mode == ProxyMode.single) {
-          _degradeToSingle('chunk $chunkIndex not ready during serve');
+          if (!_isChunkInsideCacheWindow(chunkIndex)) {
+            logger(
+              'session=$sessionId chunk $chunkIndex not ready because it is outside cache window (likely aborted by seek)',
+            );
+          } else {
+            _degradeToSingle('chunk $chunkIndex not ready during serve');
+          }
           degraded = true;
           break;
         }
@@ -1240,10 +1264,8 @@ class _ProxySession {
     // For short files, head/tail probe zones overlap; don't classify as probe.
     if (tailStart <= headLimit) return false;
     final fromHead = from <= headLimit;
-    final toHead = to <= headLimit;
-    final fromTail = from >= tailStart;
     final toTail = to >= tailStart;
-    return (fromHead && toTail) || (fromTail && toHead);
+    return fromHead && toTail;
   }
 
   void _updateCacheWindow(int anchorStart) {

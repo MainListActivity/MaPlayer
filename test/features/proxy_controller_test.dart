@@ -454,6 +454,12 @@ void main() {
             contentLength - 8 * 1024 * 1024,
           );
           await Future.wait([headFuture, tailFuture]);
+          final tailStart = contentLength - 8 * 1024 * 1024;
+          final clampedTailEnd = tailStart + 2 * 1024 * 1024 - 1;
+          final clampedTailRange = 'bytes=$tailStart-$clampedTailEnd';
+          final fullTailRange = 'bytes=$tailStart-${contentLength - 1}';
+          expect(upstream.rangeRequests, contains(clampedTailRange));
+          expect(upstream.rangeRequests, isNot(contains(fullTailRange)));
 
           final headCheck = await _fetchRangeBytes(
             endpoint.playbackUrl,
