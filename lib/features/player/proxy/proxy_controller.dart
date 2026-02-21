@@ -323,7 +323,7 @@ class _ProxySession {
   final _AsyncSemaphore _writeLock = _AsyncSemaphore(1);
   final StreamController<ProxyStatsSnapshot> _statsController =
       StreamController<ProxyStatsSnapshot>.broadcast();
-  final Map<int, Future<void>> _inFlight = <int, Future<void>>{};
+  final Map<int, Completer<bool>> _inFlight = <int, Completer<bool>>{};
   final Set<int> _downloadedChunks = <int>{};
 
   late final File _cacheFile;
@@ -454,7 +454,9 @@ class _ProxySession {
     _statsTimer?.cancel();
     final inflight = _inFlight.values.toList(growable: false);
     if (inflight.isNotEmpty) {
-      await Future.wait(inflight.map((f) => f.catchError((_) {})));
+      await Future.wait(
+        inflight.map((c) => c.future.then((_) {}, onError: (_) {})),
+      );
     }
     _client.close(force: true);
     await _writeRaf?.flush();
@@ -548,24 +550,23 @@ class _ProxySession {
     );
 
     final raf = await _cacheFile.open(mode: FileMode.read);
+    var degraded = false;
     try {
       var offset = requested.start;
       final end = requested.end!;
       while (offset <= end) {
         final chunkReady = await _ensureChunkReady(offset ~/ chunkSize);
         if (!chunkReady || _mode == ProxyMode.single) {
-          throw StateError('chunk not ready at offset=$offset');
+          _degradeToSingle('chunk ${offset ~/ chunkSize} not ready during serve');
+          degraded = true;
+          break;
         }
         final remaining = end - offset + 1;
         final readLen = min(remaining, 64 * 1024);
         await raf.setPosition(offset);
-        var data = await raf.read(readLen);
+        final data = await raf.read(readLen);
         if (data.isEmpty) {
-          await Future<void>.delayed(const Duration(milliseconds: 40));
-          data = await raf.read(readLen);
-        }
-        if (data.isEmpty) {
-          throw StateError('cache data missing at $offset');
+          throw StateError('cache data missing at offset=$offset after chunk ready');
         }
         _recordServedBytes(data.length);
         request.response.add(data);
@@ -573,6 +574,10 @@ class _ProxySession {
       }
     } finally {
       await raf.close();
+    }
+    if (degraded) {
+      await _serveSingle(request, requested);
+      return;
     }
     await request.response.close();
   }
@@ -584,31 +589,26 @@ class _ProxySession {
     final needStartChunk = start ~/ chunkSize;
     final needEndChunk = end ~/ chunkSize;
 
-    final requiredFutures = <Future<void>>[];
-    for (var i = needStartChunk; i <= needEndChunk; i++) {
-      requiredFutures.add(_scheduleChunk(i));
-    }
-
     final windowStart = max(0, start - behindWindowBytes);
     final windowEnd = min(length - 1, start + aheadWindowBytes);
     final prefetchStartChunk = windowStart ~/ chunkSize;
     final prefetchEndChunk = windowEnd ~/ chunkSize;
 
+    // Start all prefetch chunks in the background (non-blocking).
     for (var i = prefetchStartChunk; i <= prefetchEndChunk; i++) {
-      unawaited(_scheduleChunk(i));
+      _startPrefetch(i);
     }
 
+    // Track cache hit stats.
     final requestedBytes = end - start + 1;
     _requestedBytes += requestedBytes;
-    final cachedChunks = _countCachedChunksInRange(
-      needStartChunk,
-      needEndChunk,
-    );
+    final cachedChunks = _countCachedChunksInRange(needStartChunk, needEndChunk);
     _cacheHitBytes += cachedChunks * chunkSize;
 
-    for (final future in requiredFutures) {
-      await future;
-      if (_mode == ProxyMode.single) return;
+    // Wait for the chunks that are required for the current request.
+    for (var i = needStartChunk; i <= needEndChunk; i++) {
+      final ok = await _waitForChunk(i);
+      if (!ok || _mode == ProxyMode.single) return;
     }
   }
 
@@ -711,56 +711,72 @@ class _ProxySession {
     }
   }
 
-  Future<void> _scheduleChunk(int chunkIndex) async {
-    if (_mode == ProxyMode.single) {
-      return;
-    }
+  /// Starts a chunk download in the background. Does not wait for completion.
+  /// Idempotent: no-op if the chunk is already downloaded or already in-flight.
+  void _startPrefetch(int chunkIndex) {
+    if (_mode == ProxyMode.single) return;
     final length = _contentLength;
-    if (length == null || length <= 0) {
-      return;
-    }
-    if (chunkIndex < 0 || chunkIndex * chunkSize >= length) {
-      return;
-    }
-    if (_downloadedChunks.contains(chunkIndex)) {
-      return;
-    }
-    final existing = _inFlight[chunkIndex];
-    if (existing != null) {
-      await existing;
-      return;
-    }
+    if (length == null || length <= 0) return;
+    if (chunkIndex < 0 || chunkIndex * chunkSize >= length) return;
+    if (_downloadedChunks.contains(chunkIndex)) return;
+    if (_inFlight.containsKey(chunkIndex)) return;
 
-    final completer = Completer<void>();
-    _inFlight[chunkIndex] = completer.future;
+    final completer = Completer<bool>();
+    _inFlight[chunkIndex] = completer;
 
     unawaited(() async {
       await _semaphore.acquire();
       _activeWorkers += 1;
       try {
+        bool ok = false;
         if (!_downloadedChunks.contains(chunkIndex) &&
             _mode == ProxyMode.parallel) {
-          final ok = await _downloadChunk(chunkIndex);
+          ok = await _downloadChunk(chunkIndex);
           if (ok && _mode == ProxyMode.parallel) {
             _downloadedChunks.add(chunkIndex);
           }
+        } else if (_downloadedChunks.contains(chunkIndex)) {
+          ok = true;
         }
-        if (!completer.isCompleted) {
-          completer.complete();
-        }
+        completer.complete(ok);
       } catch (e, st) {
         logger('chunk task failed: chunk=$chunkIndex, e=$e\n$st');
-        if (!completer.isCompleted) {
-          completer.completeError(e, st);
-        }
+        completer.completeError(e, st);
       } finally {
         _activeWorkers = max(0, _activeWorkers - 1);
         _inFlight.remove(chunkIndex);
         _semaphore.release();
       }
     }());
+  }
 
-    await completer.future;
+  /// Waits for a chunk to be ready in the cache. Starts the download if not
+  /// already in-flight. Returns true if the chunk is available for reading.
+  Future<bool> _waitForChunk(int chunkIndex) async {
+    if (_mode == ProxyMode.single) return false;
+    if (_downloadedChunks.contains(chunkIndex)) return true;
+
+    final existing = _inFlight[chunkIndex];
+    if (existing != null) {
+      try {
+        return await existing.future;
+      } catch (_) {
+        return false;
+      }
+    }
+
+    // Not yet started — kick it off now and wait.
+    _startPrefetch(chunkIndex);
+    final started = _inFlight[chunkIndex];
+    if (started == null) {
+      // _startPrefetch found it already done (race), check the set.
+      return _downloadedChunks.contains(chunkIndex);
+    }
+    try {
+      return await started.future;
+    } catch (_) {
+      return false;
+    }
   }
 
   _RequestRange? _normalizeRequestedRange(_RequestRange? range, int length) {
@@ -924,12 +940,7 @@ class _ProxySession {
     logger('session=$sessionId degraded to single mode: $reason');
   }
 
-  Future<bool> _ensureChunkReady(int chunkIndex) async {
-    if (_mode == ProxyMode.single) return false;
-    if (_downloadedChunks.contains(chunkIndex)) return true;
-    await _scheduleChunk(chunkIndex);
-    return _downloadedChunks.contains(chunkIndex);
-  }
+  Future<bool> _ensureChunkReady(int chunkIndex) => _waitForChunk(chunkIndex);
 
 }
 
