@@ -422,23 +422,29 @@ class _ProxySession {
         '${cachedChunks.length} chunks (contentLength=$_contentLength)',
       );
     } else {
-      // Invalidate stale cache files if they exist.
-      if (await _cacheFile.exists()) {
-        try { await _cacheFile.delete(); } catch (_) {}
-      }
-      if (await _metaFile.exists()) {
-        try { await _metaFile.delete(); } catch (_) {}
-      }
-      await _cacheFile.create(recursive: true);
-      _writeRaf = await _cacheFile.open(mode: FileMode.write);
-      if (cachedContentLength != null &&
+      // Only discard the cache when a definitive content-length mismatch is
+      // detected (both sides are known and differ). A probe failure
+      // (_contentLength == null) is likely a transient network issue — leave
+      // the cache files in place so they can be reused on the next open.
+      final definiteMismatch = cachedContentLength != null &&
           _contentLength != null &&
-          cachedContentLength != _contentLength) {
+          cachedContentLength != _contentLength;
+      if (definiteMismatch) {
+        if (await _cacheFile.exists()) {
+          try { await _cacheFile.delete(); } catch (_) {}
+        }
+        if (await _metaFile.exists()) {
+          try { await _metaFile.delete(); } catch (_) {}
+        }
         logger(
           'session=$sessionId cache invalidated: '
           'cachedLength=$cachedContentLength remoteLength=$_contentLength',
         );
       }
+      if (!await _cacheFile.exists()) {
+        await _cacheFile.create(recursive: true);
+      }
+      _writeRaf = await _cacheFile.open(mode: FileMode.write);
     }
 
     if (!probe.supportsRange ||
