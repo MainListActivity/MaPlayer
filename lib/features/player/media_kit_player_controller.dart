@@ -12,11 +12,8 @@ class MediaKitPlayerController {
 
   final Player player;
 
-  Future<void> open(String url, {Map<String, String>? headers}) async {
-    final configuration = Media(
-      url,
-      httpHeaders: headers == null || headers.isEmpty ? null : headers,
-    );
+  Future<void> open(String url) async {
+    final configuration = Media(url);
     await player.open(configuration);
   }
 

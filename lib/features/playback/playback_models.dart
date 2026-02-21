@@ -1,4 +1,5 @@
 import 'package:ma_palyer/features/cloud/quark/quark_models.dart';
+import 'package:ma_palyer/features/player/proxy/proxy_models.dart';
 
 class PlaybackRequest {
   const PlaybackRequest({
@@ -42,6 +43,18 @@ class PlaybackResolveResult {
 
   final PlayableMedia media;
   final Map<String, dynamic> rawPlayerContent;
+}
+
+class ResolvedPlaybackEndpoint {
+  const ResolvedPlaybackEndpoint({
+    required this.originalMedia,
+    required this.playbackUrl,
+    this.proxySession,
+  });
+
+  final PlayableMedia originalMedia;
+  final String playbackUrl;
+  final ProxySessionDescriptor? proxySession;
 }
 
 class QuarkLoginChallenge {

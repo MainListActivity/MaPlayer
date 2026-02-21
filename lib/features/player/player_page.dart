@@ -6,7 +6,8 @@ import 'package:ma_palyer/app/app_route.dart';
 import 'package:ma_palyer/features/cloud/quark/quark_models.dart';
 import 'package:ma_palyer/features/playback/playback_models.dart';
 import 'package:ma_palyer/features/player/media_kit_player_controller.dart';
-import 'package:media_kit/media_kit.dart';
+import 'package:ma_palyer/features/player/proxy/proxy_controller.dart';
+import 'package:ma_palyer/features/player/proxy/proxy_models.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
 import 'package:ma_palyer/features/playback/share_play_orchestrator.dart';
@@ -47,18 +48,13 @@ class _PlayerPageState extends State<PlayerPage> {
   PlayableMedia? _currentMedia;
   QuarkPlayableVariant? _currentCloudVariant;
 
-  StreamSubscription<Duration>? _durationSub;
-  StreamSubscription<Track>? _trackSub;
   StreamSubscription<bool>? _bufferingSub;
-  Timer? _networkStatsTimer;
-  Duration _lastPositionSample = Duration.zero;
-  Duration _lastBufferSample = Duration.zero;
-  DateTime? _lastSampleAt;
-  Duration _mediaDuration = Duration.zero;
-  int? _videoTrackBitrate;
+  StreamSubscription<ProxyStatsSnapshot>? _proxyStatsSub;
+  String? _proxySessionId;
   bool _isBufferingNow = false;
   String _networkSpeedLabel = '--';
-  String _bufferAheadLabel = '缓冲: --';
+  String _bufferAheadLabel = '预读: --';
+  String _proxyModeLabel = '';
 
   @override
   void initState() {
@@ -66,7 +62,7 @@ class _PlayerPageState extends State<PlayerPage> {
     _playerController = MediaKitPlayerController();
     _videoController = VideoController(_playerController.player);
     _orchestrator = SharePlayOrchestrator();
-    _bindNetworkStatsStreams();
+    _bindPlayerStreams();
 
     final args = widget.args;
     if (args != null) {
@@ -80,94 +76,46 @@ class _PlayerPageState extends State<PlayerPage> {
 
   @override
   void dispose() {
-    _durationSub?.cancel();
-    _trackSub?.cancel();
     _bufferingSub?.cancel();
-    _networkStatsTimer?.cancel();
+    _proxyStatsSub?.cancel();
+    final sessionId = _proxySessionId;
+    if (sessionId != null) {
+      unawaited(ProxyController.instance.closeSession(sessionId));
+    }
+    unawaited(ProxyController.instance.dispose());
     _playerController.dispose();
     super.dispose();
   }
 
-  void _bindNetworkStatsStreams() {
+  void _bindPlayerStreams() {
     final player = _playerController.player;
-    _durationSub = player.stream.duration.listen((value) {
-      _mediaDuration = value;
-    });
-    _trackSub = player.stream.track.listen((value) {
-      _videoTrackBitrate = value.video.bitrate;
-    });
     _bufferingSub = player.stream.buffering.listen((value) {
       if (!mounted) return;
       setState(() {
         _isBufferingNow = value;
       });
     });
-    _networkStatsTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      _sampleNetworkSpeed();
-    });
   }
 
-  void _sampleNetworkSpeed() {
-    final player = _playerController.player;
-    final now = DateTime.now();
-    final position = player.state.position;
-    final buffer = player.state.buffer;
-    final ahead = buffer > position ? (buffer - position) : Duration.zero;
-    final bitrateBps = _estimateMediaBitrateBps();
-
-    if (_lastSampleAt == null) {
-      _lastSampleAt = now;
-      _lastPositionSample = position;
-      _lastBufferSample = buffer;
+  void _bindProxyStats(String? sessionId) {
+    _proxyStatsSub?.cancel();
+    if (sessionId == null) {
       if (!mounted) return;
       setState(() {
         _networkSpeedLabel = '--';
-        _bufferAheadLabel = '缓冲: ${_formatDurationShort(ahead)}';
+        _bufferAheadLabel = '预读: --';
+        _proxyModeLabel = '';
       });
       return;
     }
-
-    final deltaTimeMs = now.difference(_lastSampleAt!).inMilliseconds;
-    if (deltaTimeMs <= 0) return;
-
-    final deltaSec = deltaTimeMs / 1000.0;
-    final lastAhead = _lastBufferSample > _lastPositionSample
-        ? (_lastBufferSample - _lastPositionSample)
-        : Duration.zero;
-    final deltaAheadSec = (ahead.inMilliseconds - lastAhead.inMilliseconds) /
-        1000.0;
-
-    // Estimated network throughput using:
-    // throughput ~= media_bitrate * (1 + d(buffer_ahead)/dt)
-    final estimatedBps = bitrateBps != null
-        ? (bitrateBps * (1 + (deltaAheadSec / deltaSec))).clamp(0.0, 5e9)
-        : null;
-
-    _lastSampleAt = now;
-    _lastPositionSample = position;
-    _lastBufferSample = buffer;
-
-    if (!mounted) return;
-    setState(() {
-      _networkSpeedLabel =
-          estimatedBps == null ? '--' : _formatBitsPerSecond(estimatedBps);
-      _bufferAheadLabel = '缓冲: ${_formatDurationShort(ahead)}';
+    _proxyStatsSub = ProxyController.instance.watchStats(sessionId).listen((s) {
+      if (!mounted) return;
+      setState(() {
+        _networkSpeedLabel = _formatBitsPerSecond(s.downloadBps);
+        _bufferAheadLabel = '预读: ${_formatBytes(s.bufferedBytesAhead)}';
+        _proxyModeLabel = s.mode == ProxyMode.parallel ? '并发' : '单连接';
+      });
     });
-  }
-
-  double? _estimateMediaBitrateBps() {
-    final sizeBytes = _currentCloudVariant?.sizeBytes;
-    if (sizeBytes != null && sizeBytes > 0 && _mediaDuration > Duration.zero) {
-      final durationSec = _mediaDuration.inMilliseconds / 1000.0;
-      if (durationSec > 0) {
-        return (sizeBytes * 8) / durationSec;
-      }
-    }
-    final videoBps = _videoTrackBitrate;
-    if (videoBps != null && videoBps > 0) {
-      return videoBps.toDouble();
-    }
-    return null;
   }
 
   String _formatBitsPerSecond(double bps) {
@@ -178,11 +126,6 @@ class _PlayerPageState extends State<PlayerPage> {
       return '${(bps / 1000).toStringAsFixed(1)} Kbps';
     }
     return '${bps.toStringAsFixed(0)} bps';
-  }
-
-  String _formatDurationShort(Duration value) {
-    final sec = value.inMilliseconds / 1000.0;
-    return '${sec.toStringAsFixed(1)}s';
   }
 
   Future<void> _prepareAndPlayFromShare(SharePlayRequest request) async {
@@ -416,9 +359,15 @@ class _PlayerPageState extends State<PlayerPage> {
       _currentCloudVariant = variant;
     });
     try {
-      await _playerController.open(
-        variant.url,
-        headers: variant.headers.isNotEmpty ? variant.headers : media.headers,
+      await _openMedia(
+        PlayableMedia(
+          url: variant.url,
+          headers: variant.headers.isNotEmpty ? variant.headers : media.headers,
+          subtitle: media.subtitle,
+          progressKey: media.progressKey,
+          variants: media.variants,
+          selectedVariant: variant,
+        ),
       );
     } catch (e) {
       if (!mounted) return;
@@ -481,10 +430,29 @@ class _PlayerPageState extends State<PlayerPage> {
           media.selectedVariant ?? media.variants.firstOrNull;
     });
     try {
-      await _playerController.open(media.url, headers: media.headers);
+      final endpoint = await ProxyController.instance.createSession(
+        media,
+        fileKey: media.progressKey,
+      );
+      final prevSessionId = _proxySessionId;
+      final currentSessionId = endpoint.proxySession?.sessionId;
+      _proxySessionId = currentSessionId;
+      _bindProxyStats(currentSessionId);
+      await _playerController.open(endpoint.playbackUrl);
+      if (prevSessionId != null && prevSessionId != currentSessionId) {
+        // Delay old session cleanup to avoid cutting off in-flight reads while
+        // player backend is still switching URLs.
+        unawaited(
+          Future<void>.delayed(const Duration(seconds: 3), () async {
+            await ProxyController.instance.closeSession(prevSessionId);
+          }),
+        );
+      }
     } catch (e) {
       if (!mounted) return;
-      // You can handle error here, for now it's silent or can log
+      setState(() {
+        _errorMessage = '播放失败: $e';
+      });
     } finally {
       if (mounted) {
         setState(() {
@@ -597,7 +565,8 @@ class _PlayerPageState extends State<PlayerPage> {
           ),
         ),
         child: Text(
-          '网速: $_networkSpeedLabel  ·  $_bufferAheadLabel',
+          '网速: $_networkSpeedLabel  ·  $_bufferAheadLabel'
+          '${_proxyModeLabel.isEmpty ? '' : '  ·  $_proxyModeLabel'}',
           style: const TextStyle(
             color: Colors.white,
             fontSize: 12,
