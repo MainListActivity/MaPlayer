@@ -1026,6 +1026,9 @@ class _ProxySession {
     final windowStartChunk = max(0, newStart - behindWindowBytes) ~/ chunkSize;
     final windowEndChunk =
         min(length - 1, newStart + aheadWindowBytes) ~/ chunkSize;
+    // Clear stale abort markers so previously-aborted chunks that fall back
+    // inside the new window are not permanently blacklisted.
+    _abortedChunks.clear();
     for (final idx in _inFlight.keys.toList()) {
       if (idx < windowStartChunk || idx > windowEndChunk) {
         _abortedChunks.add(idx);
