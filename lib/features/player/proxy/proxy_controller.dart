@@ -15,11 +15,10 @@ class ProxyController {
 
   static const int _chunkSize = 2 * 1024 * 1024;
   static const int _maxConcurrency = 8;
-  static const int _sessionCacheWindowBytes = 500 * 1024 * 1024;
+  static const int _sessionCacheWindowBytes = 1024 * 1024 * 1024;
   static const int _priorityBufferSeconds = 120;
   static const int _maxOpenEndedResponseBytes = 64 * 1024 * 1024;
   static const int _startupProbeOpenEndedResponseBytes = 2 * 1024 * 1024;
-  static const int _maxCacheBytes = 2 * 1024 * 1024 * 1024;
 
   final Map<String, _ProxySession> _sessions = <String, _ProxySession>{};
   StreamController<ProxyAggregateStats>? _aggregateStatsController;
@@ -91,16 +90,12 @@ class ProxyController {
       }
     }
 
-    final cacheRoot = await _resolveCacheRoot();
-    await _evictOldCaches(cacheRoot, _maxCacheBytes);
-
     final createdAt = DateTime.now();
     final session = _ProxySession(
       sessionId: sessionId,
       sourceUrl: media.url,
       headers: media.headers,
       createdAt: createdAt,
-      cacheRoot: cacheRoot,
       streamUrl: _server!.urlForSession(sessionId),
       logger: _log,
       onDownloadBytes: _recordAggregateDownloadedBytes,
@@ -122,6 +117,10 @@ class ProxyController {
       playbackUrl: _server!.urlForSession(sessionId),
       proxySession: session.descriptor,
     );
+  }
+
+  Map<String, dynamic>? debugSessionSnapshot(String sessionId) {
+    return _sessions[sessionId]?.debugSnapshot();
   }
 
   Stream<ProxyStatsSnapshot> watchStats(String sessionId) {
@@ -228,6 +227,15 @@ class ProxyController {
     String sessionId,
   ) async {
     final session = _sessions[sessionId];
+    final path = request.uri.path;
+    final rangeHeader = request.headers.value(HttpHeaders.rangeHeader) ?? '';
+    final cachedRanges = session?.debugSnapshot()['cachedRanges'];
+
+    _log(
+      'incoming request: method=${request.method} path=$path '
+      'range=$rangeHeader cachedRanges=$cachedRanges',
+    );
+
     if (session == null) {
       request.response.statusCode = HttpStatus.notFound;
       request.response.write('session not found');
@@ -254,67 +262,6 @@ class ProxyController {
       buffer.write(sourceUrl);
     }
     return md5.convert(utf8.encode(buffer.toString())).toString();
-  }
-
-  Future<Directory> _resolveCacheRoot() async {
-    String path;
-    if (Platform.isMacOS) {
-      final home = Platform.environment['HOME'] ?? Directory.current.path;
-      path = '$home/Library/Caches/ma_player/proxy_cache';
-    } else if (Platform.isWindows) {
-      final localAppData =
-          Platform.environment['LOCALAPPDATA'] ?? Directory.current.path;
-      path = '$localAppData\\ma_player\\proxy_cache';
-    } else {
-      path = '${Directory.systemTemp.path}/ma_player_proxy_cache';
-    }
-    final dir = Directory(path);
-    if (!await dir.exists()) {
-      await dir.create(recursive: true);
-    }
-    return dir;
-  }
-
-  Future<void> _evictOldCaches(Directory root, int maxBytes) async {
-    final files = <File>[];
-    await for (final entity in root.list(
-      recursive: false,
-      followLinks: false,
-    )) {
-      if (entity is File && entity.path.endsWith('.bin')) {
-        files.add(entity);
-      }
-    }
-    if (files.isEmpty) return;
-
-    var total = 0;
-    final metas = <(File file, DateTime modified, int size)>[];
-    for (final file in files) {
-      try {
-        final stat = await file.stat();
-        total += stat.size;
-        metas.add((file, stat.modified, stat.size));
-      } catch (_) {
-        // Ignore broken entries.
-      }
-    }
-    if (total <= maxBytes) return;
-
-    metas.sort((a, b) => a.$2.compareTo(b.$2));
-    for (final item in metas) {
-      if (total <= maxBytes) break;
-      try {
-        await item.$1.delete();
-        final jsonPath = item.$1.path.replaceAll(RegExp(r'\.bin$'), '.json');
-        final sidecar = File(jsonPath);
-        if (await sidecar.exists()) {
-          await sidecar.delete();
-        }
-        total -= item.$3;
-      } catch (_) {
-        // Ignore delete failure and continue.
-      }
-    }
   }
 
   void _log(String message) {
@@ -380,10 +327,6 @@ class LocalStreamProxyServer {
         await request.response.close();
         return;
       }
-      logger(
-        'incoming request: method=${request.method} path=$path '
-        'range=${request.headers.value(HttpHeaders.rangeHeader) ?? ''}',
-      );
       await onStreamRequest(request, sessionId);
       return;
     }
@@ -399,7 +342,6 @@ class _ProxySession {
     required this.sourceUrl,
     required this.headers,
     required this.createdAt,
-    required this.cacheRoot,
     required this.streamUrl,
     required this.logger,
     required this.onDownloadBytes,
@@ -416,7 +358,6 @@ class _ProxySession {
   final String sourceUrl;
   final Map<String, String> headers;
   final DateTime createdAt;
-  final Directory cacheRoot;
   final String streamUrl;
   final void Function(String message) logger;
   final void Function(int bytes) onDownloadBytes;
@@ -427,29 +368,16 @@ class _ProxySession {
   final int maxOpenEndedResponseBytes;
   final int startupProbeOpenEndedResponseBytes;
   static const bool _verboseUpstreamHeaderLogs = false;
+  static const int _memoryCacheLimitBytes = 1024 * 1024 * 1024;
 
   final HttpClient _client;
   final _AsyncSemaphore _semaphore;
-  final _AsyncSemaphore _writeLock = _AsyncSemaphore(1);
   final StreamController<ProxyStatsSnapshot> _statsController =
       StreamController<ProxyStatsSnapshot>.broadcast();
   final Map<int, Completer<bool>> _inFlight = <int, Completer<bool>>{};
-  final Set<int> _downloadedChunks = <int>{};
-  // Chunks downloaded from network but not yet flushed to disk. Serve reads
-  // from here first so it doesn't have to wait for the write lock.
-  final Map<int, List<List<int>>> _chunkBuffer = <int, List<List<int>>>{};
-  // LRU tracking: insertion order = access order; head = oldest entry.
-  final LinkedHashSet<int> _chunkAccessOrder = LinkedHashSet();
-  // Tracks in-progress disk write futures so dispose can await them.
-  final Set<Future<void>> _pendingPersists = <Future<void>>{};
-
-  late final File _cacheFile;
-  late final File _metaFile;
-  RandomAccessFile? _writeRaf;
+  late final _RangeMemoryCache _memoryCache;
 
   Timer? _statsTimer;
-  Timer? _metaDebounceTimer;
-  DateTime _lastAccessAt = DateTime.now();
   bool _isDisposing = false;
   bool _isDisposed = false;
 
@@ -459,7 +387,7 @@ class _ProxySession {
 
   int _activeWorkers = 0;
   int _playbackOffset = 0;
-  int? _restoredPlaybackPosition;
+  int? _lastPlaybackPosition;
   int _cacheWindowAnchor = 0;
   int _cacheWindowStart = 0;
   int _cacheWindowEnd = 0;
@@ -503,93 +431,35 @@ class _ProxySession {
     contentLength: _contentLength,
   );
 
-  int? get restoredPlaybackPosition => _restoredPlaybackPosition;
+  int? get restoredPlaybackPosition => _lastPlaybackPosition;
+
+  Map<String, dynamic> debugSnapshot() {
+    return <String, dynamic>{
+      'mode': _mode.name,
+      'degradeReason': _degradeReason,
+      'contentLength': _contentLength,
+      'cacheWindowAnchor': _cacheWindowAnchor,
+      'cacheWindowStart': _cacheWindowStart,
+      'cacheWindowEnd': _cacheWindowEnd,
+      'cachedChunkCount': _memoryCache.chunkCount,
+      'cachedBytes': _memoryCache.currentBytes,
+      'cachedRanges': _memoryCache.cachedRanges
+          .map((e) => <String, int>{'start': e.start, 'end': e.end})
+          .toList(growable: false),
+      'lastPlaybackPosition': _lastPlaybackPosition ?? _playbackOffset,
+    };
+  }
 
   Future<void> initialize() async {
-    _cacheFile = File('${cacheRoot.path}/$sessionId.bin');
-    _metaFile = File('${cacheRoot.path}/$sessionId.json');
+    _memoryCache = _RangeMemoryCache(
+      chunkSize: chunkSize,
+      maxBytes: _memoryCacheLimitBytes,
+    );
 
-    // --- Read cached meta (best effort) ---
-    int? cachedContentLength;
-    List<int> cachedChunks = const [];
-    int? cachedPosition;
-    if (await _metaFile.exists()) {
-      try {
-        final raw = await _metaFile.readAsString();
-        final map = jsonDecode(raw) as Map<String, dynamic>;
-        cachedContentLength = map['contentLength'] as int?;
-        final chunksRaw = map['downloadedChunks'];
-        if (chunksRaw is List) {
-          cachedChunks = chunksRaw.map((e) => (e as num).toInt()).toList();
-        }
-        final rawPos = map['lastPlaybackPosition'];
-        if (rawPos is int) {
-          cachedPosition = rawPos;
-        }
-      } catch (_) {
-        // Corrupt meta — treat as cold start.
-        cachedContentLength = null;
-        cachedChunks = const [];
-        cachedPosition = null;
-      }
-    }
-
-    // --- Probe remote ---
     final probe = await _probeRangeSupport();
     _contentLength = probe.contentLength;
     _contentType = probe.contentType;
     _updateCacheWindow(0);
-
-    // --- Warm-cache: validate and restore ---
-    final canWarm =
-        cachedContentLength != null &&
-        _contentLength != null &&
-        cachedContentLength == _contentLength &&
-        cachedChunks.isNotEmpty &&
-        await _cacheFile.exists();
-
-    if (canWarm) {
-      // Open in append mode — does NOT truncate existing data.
-      _writeRaf = await _cacheFile.open(mode: FileMode.writeOnlyAppend);
-      _downloadedChunks.addAll(cachedChunks);
-      for (final idx in cachedChunks) {
-        _chunkAccessOrder.add(idx);
-      }
-      _restoredPlaybackPosition = cachedPosition;
-      logger(
-        'session=$sessionId warm-cache restored '
-        '${cachedChunks.length} chunks (contentLength=$_contentLength)',
-      );
-    } else {
-      // Only discard the cache when a definitive content-length mismatch is
-      // detected (both sides are known and differ). A probe failure
-      // (_contentLength == null) is likely a transient network issue — leave
-      // the cache files in place so they can be reused on the next open.
-      final definiteMismatch =
-          cachedContentLength != null &&
-          _contentLength != null &&
-          cachedContentLength != _contentLength;
-      if (definiteMismatch) {
-        if (await _cacheFile.exists()) {
-          try {
-            await _cacheFile.delete();
-          } catch (_) {}
-        }
-        if (await _metaFile.exists()) {
-          try {
-            await _metaFile.delete();
-          } catch (_) {}
-        }
-        logger(
-          'session=$sessionId cache invalidated: '
-          'cachedLength=$cachedContentLength remoteLength=$_contentLength',
-        );
-      }
-      if (!await _cacheFile.exists()) {
-        await _cacheFile.create(recursive: true);
-      }
-      _writeRaf = await _cacheFile.open(mode: FileMode.write);
-    }
 
     if (!probe.supportsRange ||
         _contentLength == null ||
@@ -645,7 +515,7 @@ class _ProxySession {
   }
 
   void touch() {
-    _lastAccessAt = DateTime.now();
+    // Intentionally no-op; kept for API symmetry and future instrumentation.
   }
 
   Future<void> handleRequest(HttpRequest request) async {
@@ -697,7 +567,6 @@ class _ProxySession {
     if (_isDisposed || _isDisposing) return;
     _isDisposing = true;
     _statsTimer?.cancel();
-    _metaDebounceTimer?.cancel();
     final inflight = _inFlight.values.toList(growable: false);
     if (inflight.isNotEmpty) {
       await Future.wait(
@@ -705,16 +574,6 @@ class _ProxySession {
       );
     }
     _client.close(force: true);
-    // Wait for any in-progress disk writes before closing the file handle.
-    if (_pendingPersists.isNotEmpty) {
-      await Future.wait(
-        _pendingPersists.toList().map((f) => f.catchError((_) {})),
-      );
-    }
-    await _writeRaf?.flush();
-    await _writeRaf?.close();
-    _writeRaf = null;
-    await _writeMeta();
     await _statsController.close();
     _isDisposed = true;
     _isDisposing = false;
@@ -747,62 +606,7 @@ class _ProxySession {
       request.response.add(chunk);
       offset += chunk.length;
       _playbackOffset = offset;
-    }
-    await request.response.close();
-  }
-
-  /// Streams the requested range directly from the upstream source to the
-  /// client, bypassing the chunk cache. Used immediately after a seek so
-  /// media_kit gets data without waiting for background downloads to complete.
-  /// Does not write to the cache to avoid races with parallel prefetch tasks.
-  Future<void> _serveBridge(
-    HttpRequest request,
-    _RequestRange requested,
-  ) async {
-    if (_isDisposing || _isDisposed) {
-      request.response.statusCode = HttpStatus.gone;
-      await request.response.close();
-      return;
-    }
-    final length = _contentLength!;
-    request.response.statusCode = HttpStatus.partialContent;
-    request.response.headers.set(HttpHeaders.acceptRangesHeader, 'bytes');
-    request.response.headers.set(
-      HttpHeaders.contentTypeHeader,
-      _contentType ?? 'video/mp4',
-    );
-    request.response.headers.set(
-      HttpHeaders.contentLengthHeader,
-      '${requested.end! - requested.start + 1}',
-    );
-    request.response.headers.set(
-      HttpHeaders.contentRangeHeader,
-      'bytes ${requested.start}-${requested.end!}/$length',
-    );
-
-    try {
-      final uri = Uri.parse(sourceUrl);
-      final upstreamRequest = await _client.getUrl(uri);
-      _applyHeaders(upstreamRequest.headers, headers);
-      upstreamRequest.headers.set(
-        HttpHeaders.rangeHeader,
-        'bytes=${requested.start}-${requested.end!}',
-      );
-      _logUpstreamRequestHeaders('serveBridge', upstreamRequest.headers);
-
-      final upstreamResponse = await upstreamRequest.close();
-      var offset = requested.start;
-      await for (final chunk in upstreamResponse) {
-        _recordDownloadedBytes(chunk.length);
-        _recordServedBytes(chunk.length);
-        request.response.add(chunk);
-        offset += chunk.length;
-        _playbackOffset = offset;
-      }
-    } catch (e) {
-      if (!_isDisposing && !_isDisposed && !_isClientClosedError(e)) {
-        logger('session=$sessionId bridge failed: $e');
-      }
+      _lastPlaybackPosition = offset;
     }
     await request.response.close();
   }
@@ -830,6 +634,7 @@ class _ProxySession {
       request.response.add(chunk);
       offset += chunk.length;
       _playbackOffset = offset;
+      _lastPlaybackPosition = offset;
     }
     await request.response.close();
   }
@@ -975,13 +780,12 @@ class _ProxySession {
     _playbackOffset = requested.start;
 
     if (isSeek) {
-      // Bridge: stream directly from upstream so media_kit gets data
-      // immediately without waiting for background chunks to arrive.
-      // Kick off background prefetch while the bridge serves the response.
       _ensureRangeAvailableBackground(requested.start);
-      await _serveBridge(request, requested);
-      return;
     }
+
+    final requestedBytes = requested.end! - requested.start + 1;
+    _requestedBytes += requestedBytes;
+    _cacheHitBytes += _countCachedBytesInRange(requested.start, requested.end!);
 
     final startupEnd = min(
       requested.end!,
@@ -1023,13 +827,14 @@ class _ProxySession {
       );
     }
 
-    final raf = await _cacheFile.open(mode: FileMode.read);
     var degraded = false;
     var offset = requested.start;
     final end = requested.end!;
-    try {
-      while (offset <= end) {
-        final chunkIndex = offset ~/ chunkSize;
+    while (offset <= end) {
+      final chunkIndex = offset ~/ chunkSize;
+      var chunkData = _memoryCache.peekChunk(chunkIndex);
+      if (chunkData == null) {
+        _startPrefetch(chunkIndex);
         final chunkReady = await _ensureChunkReady(chunkIndex);
         if (!chunkReady || _mode == ProxyMode.single) {
           if (!_isChunkInsideCacheWindow(chunkIndex)) {
@@ -1042,56 +847,38 @@ class _ProxySession {
           degraded = true;
           break;
         }
-        _touchChunk(chunkIndex);
-        final remaining = end - offset + 1;
-        final readLen = min(remaining, 64 * 1024);
-
-        // Try in-memory buffer first (chunk downloaded but disk write pending).
-        final bufData = _chunkBuffer[chunkIndex];
-        List<int> data;
-        if (bufData != null) {
-          // Assemble the bytes needed from the in-memory buffer.
-          final chunkStart = chunkIndex * chunkSize;
-          final localOffset = offset - chunkStart;
-          var collected = 0;
-          final builder = BytesBuilder(copy: false);
-          var pos = 0;
-          for (final segment in bufData) {
-            final segEnd = pos + segment.length;
-            if (segEnd <= localOffset) {
-              pos = segEnd;
-              continue;
-            }
-            final from = max(0, localOffset - pos);
-            final take = min(segment.length - from, readLen - collected);
-            builder.add(
-              from == 0 && take == segment.length
-                  ? segment
-                  : segment.sublist(from, from + take),
-            );
-            collected += take;
-            pos = segEnd;
-            if (collected >= readLen) break;
-          }
-          data = builder.takeBytes();
-        } else {
-          // Chunk already persisted to disk — read from cache file.
-          await raf.setPosition(offset);
-          data = await raf.read(readLen);
-        }
-
-        if (data.isEmpty) {
-          throw StateError(
-            'cache data missing at offset=$offset after chunk ready',
-          );
-        }
-        _recordServedBytes(data.length);
-        request.response.add(data);
-        offset += data.length;
-        _playbackOffset = offset;
+        chunkData = _memoryCache.peekChunk(chunkIndex);
       }
-    } finally {
-      await raf.close();
+      if (chunkData == null || chunkData.isEmpty) {
+        _degradeToSingle('chunk $chunkIndex missing after ready');
+        degraded = true;
+        break;
+      }
+      _touchChunk(chunkIndex);
+      final chunkStart = chunkIndex * chunkSize;
+      final localOffset = offset - chunkStart;
+      if (localOffset < 0 || localOffset >= chunkData.length) {
+        _degradeToSingle(
+          'invalid localOffset=$localOffset for chunk=$chunkIndex len=${chunkData.length}',
+        );
+        degraded = true;
+        break;
+      }
+      final remaining = end - offset + 1;
+      final readLen = min(
+        remaining,
+        min(64 * 1024, chunkData.length - localOffset),
+      );
+      final data = Uint8List.sublistView(
+        chunkData,
+        localOffset,
+        localOffset + readLen,
+      );
+      _recordServedBytes(data.length);
+      request.response.add(data);
+      offset += data.length;
+      _playbackOffset = offset;
+      _lastPlaybackPosition = offset;
     }
     if (degraded) {
       await _serveSingleTail(
@@ -1125,11 +912,6 @@ class _ProxySession {
       _startPrefetch(i);
     }
 
-    // Track cache hit stats.
-    final requestedBytes = end - start + 1;
-    _requestedBytes += requestedBytes;
-    _cacheHitBytes += _countCachedBytesInRange(start, end);
-
     // Wait for the chunks that are required for the current request.
     for (var i = needStartChunk; i <= needEndChunk; i++) {
       final ok = await _waitForChunk(i);
@@ -1138,8 +920,7 @@ class _ProxySession {
   }
 
   /// Kicks off background prefetch for the window around [start] without
-  /// waiting for any chunk to complete. Used on seek to warm the cache while
-  /// _serveBridge handles the immediate response.
+  /// waiting for any chunk to complete.
   void _ensureRangeAvailableBackground(int start) {
     final length = _contentLength;
     if (length == null || length <= 0) return;
@@ -1159,28 +940,9 @@ class _ProxySession {
   }
 
   int _countCachedBytesInRange(int start, int end) {
-    var hitBytes = 0;
-    var offset = start;
-    while (offset <= end) {
-      final chunkIndex = offset ~/ chunkSize;
-      if (!_downloadedChunks.contains(chunkIndex)) {
-        final chunkStart = chunkIndex * chunkSize;
-        offset = chunkStart + chunkSize;
-        continue;
-      }
-      final chunkStart = chunkIndex * chunkSize;
-      final chunkEnd = min(
-        (_contentLength ?? 0) - 1,
-        chunkStart + chunkSize - 1,
-      );
-      final coveredStart = max(offset, chunkStart);
-      final coveredEnd = min(end, chunkEnd);
-      if (coveredEnd >= coveredStart) {
-        hitBytes += coveredEnd - coveredStart + 1;
-      }
-      offset = chunkEnd + 1;
-    }
-    return hitBytes;
+    final length = _contentLength;
+    if (length == null || length <= 0) return 0;
+    return _memoryCache.countCachedBytesInRange(start, end, length);
   }
 
   int _priorityWindowEnd(int start, int length) {
@@ -1282,8 +1044,7 @@ class _ProxySession {
   }
 
   void _touchChunk(int chunkIndex) {
-    _chunkAccessOrder.remove(chunkIndex);
-    _chunkAccessOrder.add(chunkIndex);
+    _memoryCache.touchChunk(chunkIndex);
   }
 
   bool _isChunkInsideCacheWindow(int chunkIndex) {
@@ -1298,26 +1059,29 @@ class _ProxySession {
   void _evictChunksIfNeeded() {
     final startChunk = _cacheWindowStart ~/ chunkSize;
     final endChunk = _cacheWindowEnd ~/ chunkSize;
-    final stale = _downloadedChunks
+    final stale = _memoryCache.chunkIndices
         .where((idx) {
           return idx < startChunk || idx > endChunk;
         })
         .toList(growable: false);
     for (final idx in stale) {
-      _downloadedChunks.remove(idx);
-      _chunkBuffer.remove(idx);
-      _chunkAccessOrder.remove(idx);
+      _memoryCache.removeChunk(idx);
+    }
+    while (_memoryCache.currentBytes > _memoryCache.maxBytes) {
+      final oldest = _memoryCache.oldestChunkIndex;
+      if (oldest == null) break;
+      _memoryCache.removeChunk(oldest);
     }
   }
 
   /// Downloads a chunk from the network and returns the received data.
-  /// Returns null on failure (after retries). Does NOT write to disk.
-  Future<List<List<int>>?> _downloadChunk(int chunkIndex) async {
+  /// Returns null on failure (after retries).
+  Future<Uint8List?> _downloadChunk(int chunkIndex) async {
     final length = _contentLength;
     if (length == null || length <= 0) return null;
 
     final start = chunkIndex * chunkSize;
-    if (start >= length) return const <List<int>>[];
+    if (start >= length) return Uint8List(0);
     final end = min(length - 1, start + chunkSize - 1);
     final expectedBytes = end - start + 1;
 
@@ -1332,14 +1096,14 @@ class _ProxySession {
         final resp = await req.close();
         if (resp.statusCode == HttpStatus.partialContent) {
           var received = 0;
-          final chunks = <List<int>>[];
+          final builder = BytesBuilder(copy: false);
           await for (final data in resp) {
             _recordDownloadedBytes(data.length);
             received += data.length;
-            chunks.add(data);
+            builder.add(data);
           }
           if (received == expectedBytes) {
-            return chunks;
+            return builder.takeBytes();
           }
           if (retry == 2) {
             _degradeToSingle(
@@ -1369,90 +1133,6 @@ class _ProxySession {
     return null;
   }
 
-  /// Writes chunk data to the shared RAF under the write lock.
-  /// Removes the chunk from [_chunkBuffer] when done.
-  Future<void> _persistChunk(int chunkIndex, List<List<int>> data) async {
-    final length = _contentLength;
-    if (length == null) return;
-    final start = chunkIndex * chunkSize;
-    // Skip write if this chunk was aborted during a seek.
-    if (_abortedChunks.contains(chunkIndex)) {
-      _chunkBuffer.remove(chunkIndex);
-      return;
-    }
-    await _writeLock.acquire();
-    try {
-      final raf = _writeRaf;
-      if (raf == null) return; // Session disposed; cache file already closed.
-      await raf.setPosition(start);
-      for (final chunk in data) {
-        await raf.writeFrom(chunk);
-      }
-    } finally {
-      _writeLock.release();
-      _chunkBuffer.remove(chunkIndex);
-      _scheduleMeta();
-    }
-  }
-
-  Future<void> _writeMeta() async {
-    try {
-      final payload = <String, dynamic>{
-        'sessionId': sessionId,
-        'sourceUrl': sourceUrl,
-        'mode': _mode.name,
-        'createdAt': createdAt.toIso8601String(),
-        'lastAccessAt': _lastAccessAt.toIso8601String(),
-        'contentLength': _contentLength,
-        'downloadedChunks': (_downloadedChunks.toList()..sort()),
-        'cachedRanges': _buildCachedRanges(),
-        'downloadedChunkCount': _downloadedChunks.length,
-        'degradeReason': _degradeReason,
-        'lastPlaybackPosition': _playbackOffset,
-        'cacheWindowAnchor': _cacheWindowAnchor,
-        'cacheWindowStart': _cacheWindowStart,
-        'cacheWindowEnd': _cacheWindowEnd,
-      };
-      await _metaFile.writeAsString(jsonEncode(payload));
-    } catch (_) {
-      // Best effort only.
-    }
-  }
-
-  void _scheduleMeta() {
-    if (_isDisposing || _isDisposed) return;
-    _metaDebounceTimer?.cancel();
-    _metaDebounceTimer = Timer(const Duration(seconds: 5), () {
-      unawaited(_writeMeta());
-    });
-  }
-
-  List<Map<String, int>> _buildCachedRanges() {
-    final length = _contentLength;
-    if (length == null || length <= 0 || _downloadedChunks.isEmpty) {
-      return const <Map<String, int>>[];
-    }
-    final sorted = _downloadedChunks.toList()..sort();
-    final out = <Map<String, int>>[];
-    var runStart = sorted.first;
-    var prev = sorted.first;
-    for (final idx in sorted.skip(1)) {
-      if (idx == prev + 1) {
-        prev = idx;
-        continue;
-      }
-      final startByte = runStart * chunkSize;
-      final endByte = min(length - 1, (prev + 1) * chunkSize - 1);
-      out.add(<String, int>{'start': startByte, 'end': endByte});
-      runStart = idx;
-      prev = idx;
-    }
-    final startByte = runStart * chunkSize;
-    final endByte = min(length - 1, (prev + 1) * chunkSize - 1);
-    out.add(<String, int>{'start': startByte, 'end': endByte});
-    return out;
-  }
-
   /// Marks all in-flight chunks outside the new prefetch window as aborted.
   /// Aborted tasks check [_abortedChunks] at key points and exit early,
   /// releasing their semaphore slot immediately.
@@ -1479,7 +1159,7 @@ class _ProxySession {
     if (length == null || length <= 0) return;
     if (chunkIndex < 0 || chunkIndex * chunkSize >= length) return;
     if (!_isChunkInsideCacheWindow(chunkIndex)) return;
-    if (_downloadedChunks.contains(chunkIndex)) return;
+    if (_memoryCache.containsChunk(chunkIndex)) return;
     if (_inFlight.containsKey(chunkIndex)) return;
 
     final completer = Completer<bool>();
@@ -1498,7 +1178,7 @@ class _ProxySession {
           completer.complete(false);
           return;
         }
-        if (_downloadedChunks.contains(chunkIndex)) {
+        if (_memoryCache.containsChunk(chunkIndex)) {
           completer.complete(true);
           return;
         }
@@ -1520,21 +1200,10 @@ class _ProxySession {
           completer.complete(false);
           return;
         }
-        // Store in memory buffer so serve can read immediately.
-        _chunkBuffer[chunkIndex] = data;
-        _downloadedChunks.add(chunkIndex);
+        _memoryCache.putChunk(chunkIndex, data);
         _touchChunk(chunkIndex);
         _evictChunksIfNeeded();
-        // Signal serve that the chunk is ready before disk write completes.
-        completer.complete(true);
-        // Persist to disk asynchronously — does not block serve.
-        final persistFuture = _persistChunk(chunkIndex, data);
-        _pendingPersists.add(persistFuture);
-        unawaited(
-          persistFuture.whenComplete(
-            () => _pendingPersists.remove(persistFuture),
-          ),
-        );
+        completer.complete(_memoryCache.containsChunk(chunkIndex));
       } catch (e, st) {
         if (!_isDisposing && !_isDisposed && !_isClientClosedError(e)) {
           logger('chunk task failed: chunk=$chunkIndex, e=$e\n$st');
@@ -1553,7 +1222,7 @@ class _ProxySession {
   /// already in-flight. Returns true if the chunk is available for reading.
   Future<bool> _waitForChunk(int chunkIndex) async {
     if (_mode == ProxyMode.single) return false;
-    if (_downloadedChunks.contains(chunkIndex)) return true;
+    if (_memoryCache.containsChunk(chunkIndex)) return true;
 
     final existing = _inFlight[chunkIndex];
     if (existing != null) {
@@ -1569,7 +1238,7 @@ class _ProxySession {
     final started = _inFlight[chunkIndex];
     if (started == null) {
       // _startPrefetch found it already done (race), check the set.
-      return _downloadedChunks.contains(chunkIndex);
+      return _memoryCache.containsChunk(chunkIndex);
     }
     try {
       return await started.future;
@@ -1625,22 +1294,7 @@ class _ProxySession {
     if (_mode == ProxyMode.single) return 0;
     final length = _contentLength;
     if (length == null || length <= 0) return 0;
-
-    final startChunk = _playbackOffset ~/ chunkSize;
-    var total = 0;
-    var idx = startChunk;
-    while (true) {
-      if (!_downloadedChunks.contains(idx)) break;
-      final chunkStart = idx * chunkSize;
-      final chunkEnd = min(length - 1, chunkStart + chunkSize - 1);
-      if (idx == startChunk) {
-        total += max(0, chunkEnd - _playbackOffset + 1);
-      } else {
-        total += (chunkEnd - chunkStart + 1);
-      }
-      idx += 1;
-    }
-    return total;
+    return _memoryCache.bufferedBytesAhead(_playbackOffset, length);
   }
 
   Future<_RangeProbeResult> _probeRangeSupport() async {
@@ -1756,6 +1410,130 @@ class _ProxySession {
     if (error is! StateError) return false;
     return error.message.toString().contains('Client is closed');
   }
+}
+
+class _RangeMemoryCache {
+  _RangeMemoryCache({required this.chunkSize, required this.maxBytes});
+
+  final int chunkSize;
+  final int maxBytes;
+  final Map<int, Uint8List> _chunks = <int, Uint8List>{};
+  final LinkedHashMap<int, void> _lru = LinkedHashMap<int, void>();
+  final SplayTreeMap<int, _RangeSpan> _ranges = SplayTreeMap<int, _RangeSpan>();
+  int currentBytes = 0;
+
+  int get chunkCount => _chunks.length;
+  Iterable<int> get chunkIndices => _chunks.keys;
+  int? get oldestChunkIndex => _lru.isEmpty ? null : _lru.keys.first;
+  List<_RangeSpan> get cachedRanges => _ranges.values.toList(growable: false);
+
+  bool containsChunk(int chunkIndex) => _chunks.containsKey(chunkIndex);
+
+  Uint8List? peekChunk(int chunkIndex) => _chunks[chunkIndex];
+
+  void touchChunk(int chunkIndex) {
+    if (!_chunks.containsKey(chunkIndex)) return;
+    _lru.remove(chunkIndex);
+    _lru[chunkIndex] = null;
+  }
+
+  void putChunk(int chunkIndex, Uint8List data) {
+    final existing = _chunks[chunkIndex];
+    if (existing != null) {
+      currentBytes -= existing.length;
+    }
+    _chunks[chunkIndex] = data;
+    currentBytes += data.length;
+    touchChunk(chunkIndex);
+    _rebuildRanges();
+  }
+
+  bool removeChunk(int chunkIndex) {
+    final removed = _chunks.remove(chunkIndex);
+    _lru.remove(chunkIndex);
+    if (removed == null) return false;
+    currentBytes = max(0, currentBytes - removed.length);
+    _rebuildRanges();
+    return true;
+  }
+
+  int countCachedBytesInRange(int start, int end, int contentLength) {
+    if (_ranges.isEmpty || contentLength <= 0) return 0;
+    final upper = max(0, contentLength - 1);
+    final boundedStart = min(max(start, 0), upper);
+    final boundedEnd = min(max(end, 0), upper);
+    if (boundedEnd < boundedStart) return 0;
+
+    var total = 0;
+    for (final span in _ranges.values) {
+      if (span.end < boundedStart) continue;
+      if (span.start > boundedEnd) break;
+      final overlapStart = max(boundedStart, span.start);
+      final overlapEnd = min(boundedEnd, span.end);
+      if (overlapEnd >= overlapStart) {
+        total += overlapEnd - overlapStart + 1;
+      }
+    }
+    return total;
+  }
+
+  int bufferedBytesAhead(int playbackOffset, int contentLength) {
+    if (contentLength <= 0) return 0;
+    final boundedOffset = min(
+      max(playbackOffset, 0),
+      max(0, contentLength - 1),
+    );
+    final startChunk = boundedOffset ~/ chunkSize;
+    var total = 0;
+    var idx = startChunk;
+    while (true) {
+      final data = _chunks[idx];
+      if (data == null || data.isEmpty) break;
+      final chunkStart = idx * chunkSize;
+      final chunkEnd = min(contentLength - 1, chunkStart + data.length - 1);
+      if (idx == startChunk) {
+        total += max(0, chunkEnd - boundedOffset + 1);
+      } else {
+        total += max(0, chunkEnd - chunkStart + 1);
+      }
+      idx += 1;
+    }
+    return total;
+  }
+
+  void _rebuildRanges() {
+    _ranges.clear();
+    if (_chunks.isEmpty) return;
+
+    final sorted = _chunks.keys.toList()..sort();
+    var runStart = sorted.first;
+    var runEnd = sorted.first;
+    for (final idx in sorted.skip(1)) {
+      if (idx == runEnd + 1) {
+        runEnd = idx;
+        continue;
+      }
+      _addRange(runStart, runEnd);
+      runStart = idx;
+      runEnd = idx;
+    }
+    _addRange(runStart, runEnd);
+  }
+
+  void _addRange(int startChunkIndex, int endChunkIndex) {
+    final startByte = startChunkIndex * chunkSize;
+    final lastChunk = _chunks[endChunkIndex];
+    if (lastChunk == null || lastChunk.isEmpty) return;
+    final endByte = endChunkIndex * chunkSize + lastChunk.length - 1;
+    _ranges[startByte] = _RangeSpan(start: startByte, end: endByte);
+  }
+}
+
+class _RangeSpan {
+  const _RangeSpan({required this.start, required this.end});
+
+  final int start;
+  final int end;
 }
 
 class _RangeProbeResult {

@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
@@ -176,7 +175,7 @@ void main() {
     );
 
     test(
-      'seed/open range updates sliding cache window anchor in meta',
+      'seed/open range updates sliding cache window anchor in memory snapshot',
       () async {
         final upstream = _FakeVideoUpstream(contentLength: 80 * 1024 * 1024);
         await upstream.start();
@@ -198,14 +197,17 @@ void main() {
             seedStart + 128 * 1024 - 1,
           );
           expect(readLen, 128 * 1024);
-          await ProxyController.instance.closeSession(sessionId);
+          await _waitForRequestQuiet(upstream);
 
-          final meta = await _readSessionMeta(sessionId);
-          expect(meta, isNotNull);
-          final windowStart = meta!['cacheWindowStart'] as int;
-          final windowEnd = meta['cacheWindowEnd'] as int;
+          final snapshot = ProxyController.instance.debugSessionSnapshot(
+            sessionId,
+          );
+          expect(snapshot, isNotNull);
+          final windowStart = snapshot!['cacheWindowStart'] as int;
+          final windowEnd = snapshot['cacheWindowEnd'] as int;
           expect(windowStart, seedStart);
           expect(windowEnd, seedStart + 8 * 1024 * 1024 - 1);
+          await ProxyController.instance.closeSession(sessionId);
         } finally {
           await upstream.stop();
         }
@@ -239,23 +241,33 @@ void main() {
             seekStart + 128 * 1024 - 1,
           );
           await _waitForRequestQuiet(upstream);
-          await ProxyController.instance.closeSession(sessionId);
 
-          final meta = await _readSessionMeta(sessionId);
-          expect(meta, isNotNull);
-          expect(meta!['cacheWindowStart'], seekStart);
-          expect(meta['cacheWindowEnd'], seekStart + 8 * 1024 * 1024 - 1);
-          final chunks =
-              ((meta['downloadedChunks'] as List?) ?? const <dynamic>[])
-                  .cast<num>()
-                  .map((e) => e.toInt())
+          final snapshot = ProxyController.instance.debugSessionSnapshot(
+            sessionId,
+          );
+          expect(snapshot, isNotNull);
+          expect(snapshot!['cacheWindowStart'], seekStart);
+          expect(snapshot['cacheWindowEnd'], seekStart + 8 * 1024 * 1024 - 1);
+          final ranges =
+              ((snapshot['cachedRanges'] as List?) ?? const <dynamic>[])
+                  .cast<Map>()
+                  .map(
+                    (e) => (
+                      (e['start'] as num).toInt(),
+                      (e['end'] as num).toInt(),
+                    ),
+                  )
                   .toList();
           final minChunk = seekStart ~/ (2 * 1024 * 1024);
           final maxChunk =
               (seekStart + 8 * 1024 * 1024 - 1) ~/ (2 * 1024 * 1024);
-          for (final chunk in chunks) {
-            expect(chunk, inInclusiveRange(minChunk, maxChunk));
+          for (final range in ranges) {
+            final startChunk = range.$1 ~/ (2 * 1024 * 1024);
+            final endChunk = range.$2 ~/ (2 * 1024 * 1024);
+            expect(startChunk, inInclusiveRange(minChunk, maxChunk));
+            expect(endChunk, inInclusiveRange(minChunk, maxChunk));
           }
+          await ProxyController.instance.closeSession(sessionId);
         } finally {
           await upstream.stop();
         }
@@ -263,7 +275,7 @@ void main() {
       skip: !supported,
     );
 
-    test('seek bridge path advances lastPlaybackPosition', () async {
+    test('seek path advances lastPlaybackPosition', () async {
       final upstream = _FakeVideoUpstream(contentLength: 80 * 1024 * 1024);
       await upstream.start();
       try {
@@ -302,12 +314,14 @@ void main() {
         );
         expect(seekBytes, seekSize);
         await _waitForRequestQuiet(upstream);
-        await ProxyController.instance.closeSession(sessionId);
 
-        final meta = await _readSessionMeta(sessionId);
-        expect(meta, isNotNull);
-        final lastPlaybackPosition = meta!['lastPlaybackPosition'] as int;
+        final snapshot = ProxyController.instance.debugSessionSnapshot(
+          sessionId,
+        );
+        expect(snapshot, isNotNull);
+        final lastPlaybackPosition = snapshot!['lastPlaybackPosition'] as int;
         expect(lastPlaybackPosition, greaterThan(seekStart));
+        await ProxyController.instance.closeSession(sessionId);
       } finally {
         await upstream.stop();
       }
@@ -337,13 +351,14 @@ void main() {
           128 * 1024 - 1,
         );
         expect(bytes, contentLength);
-        await ProxyController.instance.closeSession(sessionId);
-
-        final meta = await _readSessionMeta(sessionId);
-        expect(meta, isNotNull);
-        final lastPlaybackPosition = meta!['lastPlaybackPosition'] as int;
+        final snapshot = ProxyController.instance.debugSessionSnapshot(
+          sessionId,
+        );
+        expect(snapshot, isNotNull);
+        final lastPlaybackPosition = snapshot!['lastPlaybackPosition'] as int;
         expect(lastPlaybackPosition, greaterThan(0));
         expect(lastPlaybackPosition, lessThanOrEqualTo(contentLength));
+        await ProxyController.instance.closeSession(sessionId);
       } finally {
         await upstream.stop();
       }
@@ -412,6 +427,48 @@ void main() {
     }, skip: !supported);
 
     test(
+      'open-ended request uses 1GiB cache window and memory stays bounded',
+      () async {
+        ProxyController.debugSessionCacheWindowBytesOverride = null;
+        const contentLength = 2 * 1024 * 1024 * 1024;
+        final upstream = _FakeVideoUpstream(contentLength: contentLength);
+        await upstream.start();
+        try {
+          final endpoint = await ProxyController.instance.createSession(
+            PlayableMedia(
+              url: upstream.url,
+              headers: const <String, String>{},
+              subtitle: null,
+              progressKey: 'p8',
+            ),
+            fileKey: 'proxy-test-1g-window',
+          );
+          final sessionId = endpoint.proxySession!.sessionId;
+          final start = 16 * 1024 * 1024 + 17;
+          final served = await _fetchOpenEndedBytes(
+            endpoint.playbackUrl,
+            start,
+          );
+          expect(served, 64 * 1024 * 1024);
+          await Future<void>.delayed(const Duration(milliseconds: 300));
+
+          final snapshot = ProxyController.instance.debugSessionSnapshot(
+            sessionId,
+          );
+          expect(snapshot, isNotNull);
+          expect(snapshot!['cacheWindowStart'], start);
+          expect(snapshot['cacheWindowEnd'], start + 1024 * 1024 * 1024 - 1);
+          final cachedBytes = snapshot['cachedBytes'] as int;
+          expect(cachedBytes, lessThanOrEqualTo(1024 * 1024 * 1024));
+          await ProxyController.instance.closeSession(sessionId);
+        } finally {
+          await upstream.stop();
+        }
+      },
+      skip: !supported,
+    );
+
+    test(
       'startup tail probe does not evict active head cache window',
       () async {
         ProxyController.debugSessionCacheWindowBytesOverride = 64 * 1024 * 1024;
@@ -467,12 +524,13 @@ void main() {
             128 * 1024 - 1,
           );
           expect(headCheck, 128 * 1024);
+          final snapshot = ProxyController.instance.debugSessionSnapshot(
+            sessionId,
+          );
+          expect(snapshot, isNotNull);
+          expect(snapshot!['mode'], 'parallel');
+          expect(snapshot['degradeReason'], isNull);
           await ProxyController.instance.closeSession(sessionId);
-
-          final meta = await _readSessionMeta(sessionId);
-          expect(meta, isNotNull);
-          expect(meta!['mode'], 'parallel');
-          expect(meta['degradeReason'], isNull);
         } finally {
           await upstream.stop();
         }
@@ -530,31 +588,4 @@ Future<void> _waitForRequestQuiet(_FakeVideoUpstream upstream) async {
       last = now;
     }
   }
-}
-
-Future<Map<String, dynamic>?> _readSessionMeta(String sessionId) async {
-  final root = await _resolveCacheRoot();
-  final file = File('${root.path}/$sessionId.json');
-  if (!await file.exists()) return null;
-  final raw = await file.readAsString();
-  return jsonDecode(raw) as Map<String, dynamic>;
-}
-
-Future<Directory> _resolveCacheRoot() async {
-  String path;
-  if (Platform.isMacOS) {
-    final home = Platform.environment['HOME'] ?? Directory.current.path;
-    path = '$home/Library/Caches/ma_player/proxy_cache';
-  } else if (Platform.isWindows) {
-    final localAppData =
-        Platform.environment['LOCALAPPDATA'] ?? Directory.current.path;
-    path = '$localAppData\\ma_player\\proxy_cache';
-  } else {
-    path = '${Directory.systemTemp.path}/ma_player_proxy_cache';
-  }
-  final dir = Directory(path);
-  if (!await dir.exists()) {
-    await dir.create(recursive: true);
-  }
-  return dir;
 }
