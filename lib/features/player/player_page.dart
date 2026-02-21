@@ -438,7 +438,11 @@ class _PlayerPageState extends State<PlayerPage> {
       final currentSessionId = endpoint.proxySession?.sessionId;
       _proxySessionId = currentSessionId;
       _bindProxyStats(currentSessionId);
-      await _playerController.open(endpoint.playbackUrl);
+      // For URLs that bypass the proxy (m3u8, non-mp4), pass auth headers
+      // directly to media_kit so it can authenticate with the CDN.
+      final playHeaders =
+          currentSessionId == null ? media.headers : null;
+      await _playerController.open(endpoint.playbackUrl, headers: playHeaders);
       if (prevSessionId != null && prevSessionId != currentSessionId) {
         // Delay old session cleanup to avoid cutting off in-flight reads while
         // player backend is still switching URLs.

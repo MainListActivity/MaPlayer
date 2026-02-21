@@ -149,17 +149,13 @@ class ProxyController {
     Map<String, String> headers, {
     String? fileKey,
   }) {
+    // Use only stable identifiers (URL + fileKey) so that time-sensitive
+    // auth tokens (Video-Auth, cookies) don't bust the disk cache on every
+    // session open.  Headers are not part of the cache key.
     final buffer = StringBuffer(sourceUrl);
     if (fileKey != null && fileKey.isNotEmpty) {
       buffer.write('|');
       buffer.write(fileKey);
-    }
-    final sortedKeys = headers.keys.toList()..sort();
-    for (final key in sortedKeys) {
-      buffer.write('|');
-      buffer.write(key);
-      buffer.write('=');
-      buffer.write(headers[key]);
     }
     return md5.convert(utf8.encode(buffer.toString())).toString();
   }
