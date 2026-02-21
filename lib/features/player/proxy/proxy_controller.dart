@@ -3,6 +3,7 @@ import 'dart:collection';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
+import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
 import 'package:ma_palyer/features/playback/playback_models.dart';
 import 'package:ma_palyer/features/player/proxy/proxy_models.dart';
@@ -325,6 +326,11 @@ class _ProxySession {
       StreamController<ProxyStatsSnapshot>.broadcast();
   final Map<int, Completer<bool>> _inFlight = <int, Completer<bool>>{};
   final Set<int> _downloadedChunks = <int>{};
+  // Chunks downloaded from network but not yet flushed to disk. Serve reads
+  // from here first so it doesn't have to wait for the write lock.
+  final Map<int, List<List<int>>> _chunkBuffer = <int, List<List<int>>>{};
+  // Tracks in-progress disk write futures so dispose can await them.
+  final Set<Future<void>> _pendingPersists = <Future<void>>{};
 
   late final File _cacheFile;
   late final File _metaFile;
@@ -459,6 +465,12 @@ class _ProxySession {
       );
     }
     _client.close(force: true);
+    // Wait for any in-progress disk writes before closing the file handle.
+    if (_pendingPersists.isNotEmpty) {
+      await Future.wait(
+        _pendingPersists.toList().map((f) => f.catchError((_) {})),
+      );
+    }
     await _writeRaf?.flush();
     await _writeRaf?.close();
     _writeRaf = null;
@@ -555,16 +567,50 @@ class _ProxySession {
       var offset = requested.start;
       final end = requested.end!;
       while (offset <= end) {
-        final chunkReady = await _ensureChunkReady(offset ~/ chunkSize);
+        final chunkIndex = offset ~/ chunkSize;
+        final chunkReady = await _ensureChunkReady(chunkIndex);
         if (!chunkReady || _mode == ProxyMode.single) {
-          _degradeToSingle('chunk ${offset ~/ chunkSize} not ready during serve');
+          _degradeToSingle('chunk $chunkIndex not ready during serve');
           degraded = true;
           break;
         }
         final remaining = end - offset + 1;
         final readLen = min(remaining, 64 * 1024);
-        await raf.setPosition(offset);
-        final data = await raf.read(readLen);
+
+        // Try in-memory buffer first (chunk downloaded but disk write pending).
+        final bufData = _chunkBuffer[chunkIndex];
+        List<int> data;
+        if (bufData != null) {
+          // Assemble the bytes needed from the in-memory buffer.
+          final chunkStart = chunkIndex * chunkSize;
+          final localOffset = offset - chunkStart;
+          var collected = 0;
+          final builder = BytesBuilder(copy: false);
+          var pos = 0;
+          for (final segment in bufData) {
+            final segEnd = pos + segment.length;
+            if (segEnd <= localOffset) {
+              pos = segEnd;
+              continue;
+            }
+            final from = max(0, localOffset - pos);
+            final take = min(segment.length - from, readLen - collected);
+            builder.add(
+              from == 0 && take == segment.length
+                  ? segment
+                  : segment.sublist(from, from + take),
+            );
+            collected += take;
+            pos = segEnd;
+            if (collected >= readLen) break;
+          }
+          data = builder.takeBytes();
+        } else {
+          // Chunk already persisted to disk — read from cache file.
+          await raf.setPosition(offset);
+          data = await raf.read(readLen);
+        }
+
         if (data.isEmpty) {
           throw StateError('cache data missing at offset=$offset after chunk ready');
         }
@@ -622,12 +668,14 @@ class _ProxySession {
     return count;
   }
 
-  Future<bool> _downloadChunk(int chunkIndex) async {
+  /// Downloads a chunk from the network and returns the received data.
+  /// Returns null on failure (after retries). Does NOT write to disk.
+  Future<List<List<int>>?> _downloadChunk(int chunkIndex) async {
     final length = _contentLength;
-    if (length == null || length <= 0) return false;
+    if (length == null || length <= 0) return null;
 
     final start = chunkIndex * chunkSize;
-    if (start >= length) return true;
+    if (start >= length) return const <List<int>>[];
     final end = min(length - 1, start + chunkSize - 1);
     final expectedBytes = end - start + 1;
 
@@ -641,35 +689,21 @@ class _ProxySession {
 
         final resp = await req.close();
         if (resp.statusCode == HttpStatus.partialContent) {
-          var written = 0;
+          var received = 0;
           final chunks = <List<int>>[];
           await for (final data in resp) {
             _recordDownloadedBytes(data.length);
-            written += data.length;
+            received += data.length;
             chunks.add(data);
           }
-          // Write to shared RAF under write lock (serialized to avoid position races).
-          await _writeLock.acquire();
-          try {
-            final raf = _writeRaf;
-            if (raf == null) {
-              return false; // Session already disposed; do not mark chunk as cached.
-            }
-            await raf.setPosition(start);
-            for (final chunk in chunks) {
-              await raf.writeFrom(chunk);
-            }
-          } finally {
-            _writeLock.release();
-          }
-          if (written == expectedBytes) {
-            return true;
+          if (received == expectedBytes) {
+            return chunks;
           }
           if (retry == 2) {
             _degradeToSingle(
-              'chunk incomplete: idx=$chunkIndex written=$written expected=$expectedBytes',
+              'chunk incomplete: idx=$chunkIndex received=$received expected=$expectedBytes',
             );
-            return false;
+            return null;
           }
           continue;
         }
@@ -677,20 +711,40 @@ class _ProxySession {
         if (resp.statusCode == HttpStatus.forbidden ||
             resp.statusCode == HttpStatus.unauthorized) {
           _degradeToSingle('source auth rejected during range chunk');
-          return false;
+          return null;
         }
 
         _degradeToSingle('source returned status=${resp.statusCode} for range');
-        return false;
+        return null;
       } catch (_) {
         if (retry == 2) {
           _degradeToSingle('chunk download failed after retries');
-          return false;
+          return null;
         }
         await Future<void>.delayed(Duration(milliseconds: 200 * (retry + 1)));
       }
     }
-    return false;
+    return null;
+  }
+
+  /// Writes chunk data to the shared RAF under the write lock.
+  /// Removes the chunk from [_chunkBuffer] when done.
+  Future<void> _persistChunk(int chunkIndex, List<List<int>> data) async {
+    final length = _contentLength;
+    if (length == null) return;
+    final start = chunkIndex * chunkSize;
+    await _writeLock.acquire();
+    try {
+      final raf = _writeRaf;
+      if (raf == null) return; // Session disposed; cache file already closed.
+      await raf.setPosition(start);
+      for (final chunk in data) {
+        await raf.writeFrom(chunk);
+      }
+    } finally {
+      _writeLock.release();
+      _chunkBuffer.remove(chunkIndex);
+    }
   }
 
   Future<void> _writeMeta() async {
@@ -728,17 +782,28 @@ class _ProxySession {
       await _semaphore.acquire();
       _activeWorkers += 1;
       try {
-        bool ok = false;
-        if (!_downloadedChunks.contains(chunkIndex) &&
-            _mode == ProxyMode.parallel) {
-          ok = await _downloadChunk(chunkIndex);
-          if (ok && _mode == ProxyMode.parallel) {
-            _downloadedChunks.add(chunkIndex);
-          }
-        } else if (_downloadedChunks.contains(chunkIndex)) {
-          ok = true;
+        if (_downloadedChunks.contains(chunkIndex)) {
+          completer.complete(true);
+          return;
         }
-        completer.complete(ok);
+        if (_mode != ProxyMode.parallel) {
+          completer.complete(false);
+          return;
+        }
+        final data = await _downloadChunk(chunkIndex);
+        if (data == null || _mode != ProxyMode.parallel) {
+          completer.complete(false);
+          return;
+        }
+        // Store in memory buffer so serve can read immediately.
+        _chunkBuffer[chunkIndex] = data;
+        _downloadedChunks.add(chunkIndex);
+        // Signal serve that the chunk is ready before disk write completes.
+        completer.complete(true);
+        // Persist to disk asynchronously — does not block serve.
+        final persistFuture = _persistChunk(chunkIndex, data);
+        _pendingPersists.add(persistFuture);
+        unawaited(persistFuture.whenComplete(() => _pendingPersists.remove(persistFuture)));
       } catch (e, st) {
         logger('chunk task failed: chunk=$chunkIndex, e=$e\n$st');
         completer.completeError(e, st);
