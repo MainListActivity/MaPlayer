@@ -492,6 +492,7 @@ class _ProxySession {
     // --- Read cached meta (best effort) ---
     int? cachedContentLength;
     List<int> cachedChunks = const [];
+    int? cachedPosition;
     if (await _metaFile.exists()) {
       try {
         final raw = await _metaFile.readAsString();
@@ -503,7 +504,7 @@ class _ProxySession {
         }
         final rawPos = map['lastPlaybackPosition'];
         if (rawPos is int) {
-          _restoredPlaybackPosition = rawPos;
+          cachedPosition = rawPos;
         }
       } catch (_) {
         // Corrupt meta — treat as cold start.
@@ -531,6 +532,7 @@ class _ProxySession {
       for (final idx in cachedChunks) {
         _chunkAccessOrder.add(idx);
       }
+      _restoredPlaybackPosition = cachedPosition;
       logger(
         'session=$sessionId warm-cache restored '
         '${cachedChunks.length} chunks (contentLength=$_contentLength)',
