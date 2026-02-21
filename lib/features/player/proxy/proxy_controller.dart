@@ -320,6 +320,7 @@ class _ProxySession {
 
   final HttpClient _client;
   final _AsyncSemaphore _semaphore;
+  final _AsyncSemaphore _writeLock = _AsyncSemaphore(1);
   final StreamController<ProxyStatsSnapshot> _statsController =
       StreamController<ProxyStatsSnapshot>.broadcast();
   final Map<int, Future<void>> _inFlight = <int, Future<void>>{};
@@ -327,6 +328,7 @@ class _ProxySession {
 
   late final File _cacheFile;
   late final File _metaFile;
+  RandomAccessFile? _writeRaf;
 
   Timer? _statsTimer;
   DateTime _lastAccessAt = DateTime.now();
@@ -366,6 +368,7 @@ class _ProxySession {
     if (!await _cacheFile.exists()) {
       await _cacheFile.create(recursive: true);
     }
+    _writeRaf = await _cacheFile.open(mode: FileMode.write);
 
     final probe = await _probeRangeSupport();
     _contentLength = probe.contentLength;
@@ -454,6 +457,9 @@ class _ProxySession {
       await Future.wait(inflight.map((f) => f.catchError((_) {})));
     }
     _client.close(force: true);
+    await _writeRaf?.flush();
+    await _writeRaf?.close();
+    _writeRaf = null;
     await _writeMeta();
     await _statsController.close();
     _isDisposed = true;
@@ -636,16 +642,24 @@ class _ProxySession {
         final resp = await req.close();
         if (resp.statusCode == HttpStatus.partialContent) {
           var written = 0;
-          final raf = await _cacheFile.open(mode: FileMode.writeOnly);
+          final chunks = <List<int>>[];
+          await for (final data in resp) {
+            _recordDownloadedBytes(data.length);
+            written += data.length;
+            chunks.add(data);
+          }
+          // Write to shared RAF under write lock (serialized to avoid position races).
+          await _writeLock.acquire();
           try {
-            await raf.setPosition(start);
-            await for (final data in resp) {
-              _recordDownloadedBytes(data.length);
-              written += data.length;
-              await raf.writeFrom(data);
+            final raf = _writeRaf;
+            if (raf != null) {
+              await raf.setPosition(start);
+              for (final chunk in chunks) {
+                await raf.writeFrom(chunk);
+              }
             }
           } finally {
-            await raf.close();
+            _writeLock.release();
           }
           if (written == expectedBytes) {
             return true;
