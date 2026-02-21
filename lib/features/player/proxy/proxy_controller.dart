@@ -64,6 +64,15 @@ class ProxyController {
       );
     }
 
+    // Cancel any other active sessions — only one download task at a time.
+    final staleIds = _sessions.keys.where((id) => id != sessionId).toList();
+    for (final staleId in staleIds) {
+      final stale = _sessions.remove(staleId);
+      if (stale != null) {
+        unawaited(stale.dispose());
+      }
+    }
+
     final cacheRoot = await _resolveCacheRoot();
     await _evictOldCaches(cacheRoot, _maxCacheBytes);
 
