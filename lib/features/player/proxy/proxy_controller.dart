@@ -401,6 +401,7 @@ class _ProxySession {
   static const int _probeHeadBytes = 2 * 1024 * 1024;
   static const int _probeTailBytes = 16 * 1024 * 1024;
   final Set<int> _abortedChunks = <int>{};
+  final Set<int> _ignoreWindowChunks = <int>{};
   DateTime? _firstParallelRequestAt;
   int _parallelRequestCount = 0;
   int? _lastRequestStartForSeek;
@@ -460,6 +461,7 @@ class _ProxySession {
     _contentLength = probe.contentLength;
     _contentType = probe.contentType;
     _updateCacheWindow(0);
+    _preloadHeadAndTail();
 
     if (!probe.supportsRange ||
         _contentLength == null ||
@@ -575,6 +577,9 @@ class _ProxySession {
     }
     _client.close(force: true);
     await _statsController.close();
+
+    _memoryCache.clear();
+
     _isDisposed = true;
     _isDisposing = false;
   }
@@ -1057,16 +1062,9 @@ class _ProxySession {
   }
 
   void _evictChunksIfNeeded() {
-    final startChunk = _cacheWindowStart ~/ chunkSize;
-    final endChunk = _cacheWindowEnd ~/ chunkSize;
-    final stale = _memoryCache.chunkIndices
-        .where((idx) {
-          return idx < startChunk || idx > endChunk;
-        })
-        .toList(growable: false);
-    for (final idx in stale) {
-      _memoryCache.removeChunk(idx);
-    }
+    // 移除原有导致强制驱除窗外 Chunk 的代码。
+    // 播放器可能有跳跃式探测的行为。
+    // 我们将缓存数据的清理职责完全交给基于 maxBytes 的 LRU 淘汰机制。
     while (_memoryCache.currentBytes > _memoryCache.maxBytes) {
       final oldest = _memoryCache.oldestChunkIndex;
       if (oldest == null) break;
@@ -1145,36 +1143,59 @@ class _ProxySession {
     // inside the new window are not permanently blacklisted.
     _abortedChunks.clear();
     for (final idx in _inFlight.keys.toList()) {
-      if (idx < windowStartChunk || idx > windowEndChunk) {
-        _abortedChunks.add(idx);
+      if (!_ignoreWindowChunks.contains(idx)) {
+        if (idx < windowStartChunk || idx > windowEndChunk) {
+          _abortedChunks.add(idx);
+        }
       }
     }
   }
 
+  void _preloadHeadAndTail() {
+    final length = _contentLength;
+    if (length == null || length <= 0) return;
+
+    // Preload head
+    _startPrefetch(0, ignoreWindow: true);
+
+    // Preload tail
+    final tailChunkIndex = (length - 1) ~/ chunkSize;
+    if (tailChunkIndex > 0) {
+      _startPrefetch(tailChunkIndex, ignoreWindow: true);
+    }
+
+    logger(
+      'session=$sessionId started preload for head (chunk 0) and tail (chunk $tailChunkIndex)',
+    );
+  }
+
   /// Starts a chunk download in the background. Does not wait for completion.
   /// Idempotent: no-op if the chunk is already downloaded or already in-flight.
-  void _startPrefetch(int chunkIndex) {
+  void _startPrefetch(int chunkIndex, {bool ignoreWindow = false}) {
     if (_mode == ProxyMode.single) return;
     final length = _contentLength;
     if (length == null || length <= 0) return;
     if (chunkIndex < 0 || chunkIndex * chunkSize >= length) return;
-    if (!_isChunkInsideCacheWindow(chunkIndex)) return;
+    if (!ignoreWindow && !_isChunkInsideCacheWindow(chunkIndex)) return;
     if (_memoryCache.containsChunk(chunkIndex)) return;
     if (_inFlight.containsKey(chunkIndex)) return;
 
     final completer = Completer<bool>();
     _inFlight[chunkIndex] = completer;
+    if (ignoreWindow) {
+      _ignoreWindowChunks.add(chunkIndex);
+    }
 
     unawaited(() async {
       await _semaphore.acquire();
       _activeWorkers += 1;
       try {
         // Checkpoint 1: abort before doing any work (seek cleared this slot).
-        if (_abortedChunks.contains(chunkIndex)) {
+        if (!ignoreWindow && _abortedChunks.contains(chunkIndex)) {
           completer.complete(false);
           return;
         }
-        if (!_isChunkInsideCacheWindow(chunkIndex)) {
+        if (!ignoreWindow && !_isChunkInsideCacheWindow(chunkIndex)) {
           completer.complete(false);
           return;
         }
@@ -1188,11 +1209,11 @@ class _ProxySession {
         }
         final data = await _downloadChunk(chunkIndex);
         // Checkpoint 2: abort after download completes (seek happened mid-download).
-        if (_abortedChunks.contains(chunkIndex)) {
+        if (!ignoreWindow && _abortedChunks.contains(chunkIndex)) {
           completer.complete(false);
           return;
         }
-        if (!_isChunkInsideCacheWindow(chunkIndex)) {
+        if (!ignoreWindow && !_isChunkInsideCacheWindow(chunkIndex)) {
           completer.complete(false);
           return;
         }
@@ -1213,6 +1234,7 @@ class _ProxySession {
         _activeWorkers = max(0, _activeWorkers - 1);
         _inFlight.remove(chunkIndex);
         _abortedChunks.remove(chunkIndex); // cleanup
+        _ignoreWindowChunks.remove(chunkIndex);
         _semaphore.release();
       }
     }());
@@ -1421,6 +1443,13 @@ class _RangeMemoryCache {
   final LinkedHashMap<int, void> _lru = LinkedHashMap<int, void>();
   final SplayTreeMap<int, _RangeSpan> _ranges = SplayTreeMap<int, _RangeSpan>();
   int currentBytes = 0;
+
+  void clear() {
+    _chunks.clear();
+    _lru.clear();
+    _ranges.clear();
+    currentBytes = 0;
+  }
 
   int get chunkCount => _chunks.length;
   Iterable<int> get chunkIndices => _chunks.keys;
