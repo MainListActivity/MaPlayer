@@ -346,6 +346,7 @@ class _ProxySession {
   RandomAccessFile? _writeRaf;
 
   Timer? _statsTimer;
+  Timer? _metaDebounceTimer;
   DateTime _lastAccessAt = DateTime.now();
   bool _isDisposing = false;
   bool _isDisposed = false;
@@ -467,6 +468,7 @@ class _ProxySession {
     if (_isDisposed || _isDisposing) return;
     _isDisposing = true;
     _statsTimer?.cancel();
+    _metaDebounceTimer?.cancel();
     final inflight = _inFlight.values.toList(growable: false);
     if (inflight.isNotEmpty) {
       await Future.wait(
@@ -753,6 +755,7 @@ class _ProxySession {
     } finally {
       _writeLock.release();
       _chunkBuffer.remove(chunkIndex);
+      _scheduleMeta();
     }
   }
 
@@ -765,6 +768,7 @@ class _ProxySession {
         'createdAt': createdAt.toIso8601String(),
         'lastAccessAt': _lastAccessAt.toIso8601String(),
         'contentLength': _contentLength,
+        'downloadedChunks': (_downloadedChunks.toList()..sort()),
         'downloadedChunkCount': _downloadedChunks.length,
         'degradeReason': _degradeReason,
       };
@@ -772,6 +776,13 @@ class _ProxySession {
     } catch (_) {
       // Best effort only.
     }
+  }
+
+  void _scheduleMeta() {
+    _metaDebounceTimer?.cancel();
+    _metaDebounceTimer = Timer(const Duration(seconds: 5), () {
+      unawaited(_writeMeta());
+    });
   }
 
   /// Starts a chunk download in the background. Does not wait for completion.
