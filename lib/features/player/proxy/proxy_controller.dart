@@ -17,6 +17,7 @@ class ProxyController {
   static const int _maxConcurrency = 8;
   static const int _aheadWindowBytes = 192 * 1024 * 1024;
   static const int _behindWindowBytes = 32 * 1024 * 1024;
+  static const int _maxOpenEndedResponseBytes = 64 * 1024 * 1024;
   static const int _maxCacheBytes = 2 * 1024 * 1024 * 1024;
 
   final Map<String, _ProxySession> _sessions = <String, _ProxySession>{};
@@ -102,6 +103,7 @@ class ProxyController {
       maxConcurrency: _maxConcurrency,
       aheadWindowBytes: _aheadWindowBytes,
       behindWindowBytes: _behindWindowBytes,
+      maxOpenEndedResponseBytes: _maxOpenEndedResponseBytes,
     );
     await session.initialize();
     _sessions[sessionId] = session;
@@ -395,6 +397,7 @@ class _ProxySession {
     required this.maxConcurrency,
     required this.aheadWindowBytes,
     required this.behindWindowBytes,
+    required this.maxOpenEndedResponseBytes,
   }) : _client = HttpClient(),
        _semaphore = _AsyncSemaphore(maxConcurrency);
 
@@ -410,6 +413,7 @@ class _ProxySession {
   final int maxConcurrency;
   final int aheadWindowBytes;
   final int behindWindowBytes;
+  final int maxOpenEndedResponseBytes;
   static const bool _verboseUpstreamHeaderLogs = false;
 
   final HttpClient _client;
@@ -608,6 +612,15 @@ class _ProxySession {
       }
       await _serveParallel(request, parsedRange);
     } catch (e, st) {
+      if (_isDisposing || _isDisposed || _isClientClosedError(e)) {
+        try {
+          request.response.statusCode = HttpStatus.gone;
+          await request.response.close();
+        } catch (_) {
+          // Best-effort close for cancelled requests.
+        }
+        return;
+      }
       logger('session=$sessionId handle request failed: $e\n$st');
       try {
         request.response.statusCode = HttpStatus.internalServerError;
@@ -651,6 +664,11 @@ class _ProxySession {
   }
 
   Future<void> _serveSingle(HttpRequest request, _RequestRange? range) async {
+    if (_isDisposing || _isDisposed) {
+      request.response.statusCode = HttpStatus.gone;
+      await request.response.close();
+      return;
+    }
     final uri = Uri.parse(sourceUrl);
     final upstreamRequest = await _client.getUrl(uri);
     _applyHeaders(upstreamRequest.headers, headers);
@@ -684,7 +702,11 @@ class _ProxySession {
       return;
     }
 
-    final requested = _normalizeRequestedRange(range, length);
+    final requested = _normalizeRequestedRange(
+      range,
+      length,
+      maxOpenEndedBytes: maxOpenEndedResponseBytes,
+    );
     if (requested == null) {
       request.response.statusCode = HttpStatus.requestedRangeNotSatisfiable;
       request.response.headers.set(
@@ -722,7 +744,11 @@ class _ProxySession {
       return;
     }
 
-    final requested = _normalizeRequestedRange(range, length);
+    final requested = _normalizeRequestedRange(
+      range,
+      length,
+      maxOpenEndedBytes: maxOpenEndedResponseBytes,
+    );
     if (requested == null) {
       request.response.statusCode = HttpStatus.requestedRangeNotSatisfiable;
       request.response.headers.set(
@@ -1029,7 +1055,9 @@ class _ProxySession {
         _pendingPersists.add(persistFuture);
         unawaited(persistFuture.whenComplete(() => _pendingPersists.remove(persistFuture)));
       } catch (e, st) {
-        logger('chunk task failed: chunk=$chunkIndex, e=$e\n$st');
+        if (!_isDisposing && !_isDisposed && !_isClientClosedError(e)) {
+          logger('chunk task failed: chunk=$chunkIndex, e=$e\n$st');
+        }
         completer.completeError(e, st);
       } finally {
         _activeWorkers = max(0, _activeWorkers - 1);
@@ -1068,7 +1096,11 @@ class _ProxySession {
     }
   }
 
-  _RequestRange? _normalizeRequestedRange(_RequestRange? range, int length) {
+  _RequestRange? _normalizeRequestedRange(
+    _RequestRange? range,
+    int length, {
+    int? maxOpenEndedBytes,
+  }) {
     if (length <= 0) return null;
     if (range == null) {
       return _RequestRange(start: 0, end: length - 1);
@@ -1076,6 +1108,11 @@ class _ProxySession {
 
     var start = range.start;
     var end = range.end ?? (length - 1);
+    if (range.end == null &&
+        maxOpenEndedBytes != null &&
+        maxOpenEndedBytes > 0) {
+      end = min(end, start + maxOpenEndedBytes - 1);
+    }
     if (start < 0) start = 0;
     if (start >= length) return null;
     if (end >= length) end = length - 1;
@@ -1232,6 +1269,11 @@ class _ProxySession {
   }
 
   Future<bool> _ensureChunkReady(int chunkIndex) => _waitForChunk(chunkIndex);
+
+  bool _isClientClosedError(Object error) {
+    if (error is! StateError) return false;
+    return error.message.toString().contains('Client is closed');
+  }
 
 }
 

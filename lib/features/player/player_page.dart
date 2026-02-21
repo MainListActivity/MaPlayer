@@ -447,13 +447,8 @@ class _PlayerPageState extends State<PlayerPage> {
           currentSessionId == null ? media.headers : null;
       await _playerController.open(endpoint.playbackUrl, headers: playHeaders);
       if (prevSessionId != null && prevSessionId != currentSessionId) {
-        // Delay old session cleanup to avoid cutting off in-flight reads while
-        // player backend is still switching URLs.
-        unawaited(
-          Future<void>.delayed(const Duration(seconds: 3), () async {
-            await ProxyController.instance.closeSession(prevSessionId);
-          }),
-        );
+        // Stop previous download workers immediately on media switch.
+        unawaited(ProxyController.instance.closeSession(prevSessionId));
       }
     } catch (e) {
       if (!mounted) return;
