@@ -405,4 +405,143 @@ void main() {
       expect(result.folderName, 'untitled_show');
     },
   );
+
+  test('resolvePlayableFile adds raw variant from file/download', () async {
+    const cookie = 'sid=abc';
+    var downloadRequested = false;
+    String? downloadUserAgent;
+    String? downloadReferer;
+    String? downloadCookie;
+
+    final authService = _FakeAuthService(
+      QuarkAuthState(
+        accessToken: 'token',
+        refreshToken: 'refresh',
+        expiresAtEpochMs: DateTime.now()
+            .add(const Duration(hours: 1))
+            .millisecondsSinceEpoch,
+        cookie: cookie,
+      ),
+    );
+
+    final client = MockClient((http.Request request) async {
+      if (request.url.path == '/1/clouddrive/file/v2/play') {
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'code': 0,
+            'data': <String, dynamic>{
+              'video_list': <Map<String, dynamic>>[
+                <String, dynamic>{
+                  'resolution': 'high',
+                  'video_info': <String, dynamic>{
+                    'url': 'https://video.example.com/high.m3u8',
+                  },
+                },
+              ],
+            },
+          }),
+          200,
+        );
+      }
+      if (request.url.path == '/1/clouddrive/file/download') {
+        downloadRequested = true;
+        downloadUserAgent = _headerValue(request.headers, 'User-Agent');
+        downloadReferer = _headerValue(request.headers, 'Referer');
+        downloadCookie = _headerValue(request.headers, 'Cookie');
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'code': 0,
+            'data': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'download_url': 'https://video.example.com/raw.mp4',
+              },
+            ],
+          }),
+          200,
+        );
+      }
+      return http.Response('not found', 404);
+    });
+
+    final service = QuarkTransferService(
+      authService: authService,
+      httpClient: client,
+      baseUri: Uri.parse('https://drive-pc.quark.cn/1/clouddrive/'),
+    );
+
+    final playable = await service.resolvePlayableFile('file-1');
+    final raw = playable.variants.where((v) => v.resolution == 'raw').single;
+
+    expect(downloadRequested, isTrue);
+    expect(downloadReferer, 'https://pan.quark.cn/');
+    expect(downloadUserAgent, contains('quark-cloud-drive/3.0.1'));
+    expect(downloadCookie, cookie);
+    expect(raw.url, 'https://video.example.com/raw.mp4');
+    expect(raw.headers['Cookie'], cookie);
+    expect(raw.headers['User-Agent'], contains('quark-cloud-drive/3.0.1'));
+  });
+
+  test(
+    'resolvePlayableFile keeps m3u8 variant as default when raw exists',
+    () async {
+      final authService = _FakeAuthService(
+        QuarkAuthState(
+          accessToken: 'token',
+          refreshToken: 'refresh',
+          expiresAtEpochMs: DateTime.now()
+              .add(const Duration(hours: 1))
+              .millisecondsSinceEpoch,
+          cookie: 'sid=abc',
+        ),
+      );
+
+      final client = MockClient((http.Request request) async {
+        if (request.url.path == '/1/clouddrive/file/v2/play') {
+          return http.Response(
+            jsonEncode(<String, dynamic>{
+              'code': 0,
+              'data': <String, dynamic>{
+                'video_list': <Map<String, dynamic>>[
+                  <String, dynamic>{
+                    'resolution': 'normal',
+                    'video_info': <String, dynamic>{
+                      'url': 'https://video.example.com/normal.m3u8',
+                    },
+                  },
+                ],
+              },
+            }),
+            200,
+          );
+        }
+        if (request.url.path == '/1/clouddrive/file/download') {
+          return http.Response(
+            jsonEncode(<String, dynamic>{
+              'code': 0,
+              'data': <Map<String, dynamic>>[
+                <String, dynamic>{
+                  'download_url': 'https://video.example.com/raw.mp4',
+                },
+              ],
+            }),
+            200,
+          );
+        }
+        return http.Response('not found', 404);
+      });
+
+      final service = QuarkTransferService(
+        authService: authService,
+        httpClient: client,
+        baseUri: Uri.parse('https://drive-pc.quark.cn/1/clouddrive/'),
+      );
+
+      final playable = await service.resolvePlayableFile('file-1');
+
+      expect(playable.selectedVariant?.resolution, 'normal');
+      expect(playable.url, 'https://video.example.com/normal.m3u8');
+      expect(playable.variants.map((e) => e.resolution), contains('raw'));
+    },
+  );
+
 }

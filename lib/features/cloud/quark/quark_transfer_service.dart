@@ -24,6 +24,12 @@ class QuarkTransferService {
       'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
       'AppleWebKit/537.36 (KHTML, like Gecko) '
       'Chrome/145.0.0.0 Safari/537.36';
+  static const _quarkDesktopAppUa =
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
+      'AppleWebKit/537.36 (KHTML, like Gecko) '
+      'quark-cloud-drive/3.0.1 Chrome/100.0.4896.160 '
+      'Electron/18.3.5.12-a038f7b798 Safari/537.36 '
+      'Channel/pckk_other_ch';
 
   List<Uri> get _baseUriCandidates => <Uri>[
     _baseUri,
@@ -361,6 +367,13 @@ class QuarkTransferService {
         data: data,
         latestVideoAuth: latestVideoAuth,
       );
+      final rawVariant = await _resolveRawVariant(
+        auth: auth,
+        savedFileId: savedFileId,
+      );
+      if (rawVariant != null) {
+        variants.add(rawVariant);
+      }
       if (variants.isEmpty) {
         throw QuarkException('Playable URL missing', code: 'PLAYABLE_PAYLOAD');
       }
@@ -911,6 +924,19 @@ class QuarkTransferService {
         );
   }
 
+
+
+  Uri _buildDownloadUri(Uri base) {
+    return base
+        .resolve('file/download')
+        .replace(
+          queryParameters: <String, String>{
+            'pr': 'ucpro',
+            'fr': 'pc',
+          },
+        );
+  }
+
   Uri _buildTaskUri(
     Uri base, {
     required String taskId,
@@ -936,6 +962,15 @@ class QuarkTransferService {
     'Referer': 'https://pan.quark.cn/',
     'User-Agent': _desktopChromeUa,
   };
+
+
+
+  Map<String, String> _downloadHeaders(QuarkAuthState auth) {
+    final headers = _authHeaders(auth);
+    headers['User-Agent'] = _quarkDesktopAppUa;
+    headers['Referer'] = 'https://pan.quark.cn/';
+    return headers;
+  }
 
   String? _extractCookieValue(String header, String key) {
     for (final segment in header.split(';')) {
@@ -1027,6 +1062,83 @@ class QuarkTransferService {
     return variants.first;
   }
 
+
+
+  Future<QuarkPlayableVariant?> _resolveRawVariant({
+    required QuarkAuthState auth,
+    required String savedFileId,
+  }) async {
+    final uri = _buildDownloadUri(_baseUri);
+    final response = await _http.post(
+      uri,
+      headers: _downloadHeaders(auth),
+      body: jsonEncode(<String, dynamic>{
+        'fids': <String>[savedFileId],
+      }),
+    );
+    _logTransfer(
+      'resolve raw: uri=$uri status=${response.statusCode} body=${_snippet(response.body)}',
+    );
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      return null;
+    }
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    final code = body['code'];
+    if (code is num && code.toInt() != 0) {
+      return null;
+    }
+
+    final downloadUrl = _extractDownloadUrl(body['data']);
+    if (downloadUrl.isEmpty) {
+      return null;
+    }
+
+    final headers = _mergePlayableHeaders(
+      auth: auth,
+      resolved: <String, String>{
+        'Referer': 'https://pan.quark.cn/',
+        'User-Agent': _quarkDesktopAppUa,
+      },
+    );
+
+    return QuarkPlayableVariant(
+      resolution: 'raw',
+      url: downloadUrl,
+      headers: headers,
+    );
+  }
+
+  String _extractDownloadUrl(Object? raw) {
+    if (raw is Map) {
+      final data = Map<String, dynamic>.from(raw);
+      final direct =
+          data['download_url']?.toString() ??
+          data['downloadUrl']?.toString() ??
+          data['url']?.toString() ??
+          '';
+      if (direct.isNotEmpty) {
+        return direct;
+      }
+      final nested = _extractDownloadUrl(data['data']);
+      if (nested.isNotEmpty) {
+        return nested;
+      }
+      final listUrl = _extractDownloadUrl(data['list']);
+      if (listUrl.isNotEmpty) {
+        return listUrl;
+      }
+    }
+    if (raw is List) {
+      for (final item in raw) {
+        final url = _extractDownloadUrl(item);
+        if (url.isNotEmpty) {
+          return url;
+        }
+      }
+    }
+    return '';
+  }
+
   String _normalizeResolution(String? resolution) {
     final value = (resolution ?? '').trim();
     if (value.isEmpty) return 'unknown';
@@ -1039,8 +1151,12 @@ class QuarkTransferService {
     String? latestVideoAuth,
   }) {
     final merged = Map<String, String>.from(resolved);
-    _setHeaderCaseInsensitive(merged, 'User-Agent', _desktopChromeUa);
-    _setHeaderCaseInsensitive(merged, 'Referer', 'https://pan.quark.cn/');
+    if (_getHeaderCaseInsensitive(merged, 'User-Agent') == null) {
+      _setHeaderCaseInsensitive(merged, 'User-Agent', _desktopChromeUa);
+    }
+    if (_getHeaderCaseInsensitive(merged, 'Referer') == null) {
+      _setHeaderCaseInsensitive(merged, 'Referer', 'https://pan.quark.cn/');
+    }
     final authCookie = auth.cookie?.trim() ?? '';
     final resolvedCookie = _getHeaderCaseInsensitive(merged, 'Cookie')?.trim();
     var cookie = authCookie.isNotEmpty ? authCookie : (resolvedCookie ?? '');
