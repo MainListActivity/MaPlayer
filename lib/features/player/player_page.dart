@@ -115,6 +115,28 @@ class _PlayerPageState extends State<PlayerPage> {
       });
     });
   }
+  /// Waits for media_kit to report a non-zero duration, up to [timeout].
+  /// Returns Duration.zero on timeout.
+  Future<Duration> _waitForDuration({
+    Duration timeout = const Duration(seconds: 5),
+  }) async {
+    final current = _playerController.player.state.duration;
+    if (current > Duration.zero) return current;
+    final completer = Completer<Duration>();
+    late StreamSubscription<Duration> sub;
+    sub = _playerController.player.stream.duration.listen((d) {
+      if (d > Duration.zero) {
+        sub.cancel();
+        if (!completer.isCompleted) completer.complete(d);
+      }
+    });
+    Future<void>.delayed(timeout).then((_) {
+      sub.cancel();
+      if (!completer.isCompleted) completer.complete(Duration.zero);
+    });
+    return completer.future;
+  }
+
 
   String _formatBitsPerSecond(double bps) {
     if (bps >= 1000 * 1000) {
@@ -446,6 +468,21 @@ class _PlayerPageState extends State<PlayerPage> {
       final playHeaders =
           currentSessionId == null ? media.headers : null;
       await _playerController.open(endpoint.playbackUrl, headers: playHeaders);
+      // Seek to restored playback position if available.
+      final restoredBytes = currentSessionId != null
+          ? ProxyController.instance.getRestoredPosition(currentSessionId)
+          : null;
+      if (restoredBytes != null && restoredBytes > 0) {
+        final contentLength = endpoint.proxySession?.contentLength;
+        if (contentLength != null && contentLength > 0) {
+          final duration = await _waitForDuration();
+          if (duration > Duration.zero) {
+            final seekFraction = restoredBytes / contentLength;
+            final seekTo = duration * seekFraction;
+            await _playerController.player.seek(seekTo);
+          }
+        }
+      }
       if (prevSessionId != null && prevSessionId != currentSessionId) {
         // Stop previous download workers immediately on media switch.
         unawaited(ProxyController.instance.closeSession(prevSessionId));
