@@ -126,6 +126,117 @@ class _FakeVideoUpstream {
   }
 }
 
+class _CookieGuardedVideoUpstream {
+  _CookieGuardedVideoUpstream({
+    required this.contentLength,
+    required this.requiredCookie,
+  });
+
+  final int contentLength;
+  final String requiredCookie;
+  final List<String> rangeRequests = <String>[];
+  int unauthorizedCount = 0;
+  HttpServer? _server;
+
+  Future<void> start() async {
+    _server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    _server!.listen((request) {
+      unawaited(_handle(request));
+    });
+  }
+
+  Future<void> stop() async {
+    await _server?.close(force: true);
+    _server = null;
+  }
+
+  String get url {
+    final server = _server;
+    if (server == null) {
+      throw StateError('upstream not started');
+    }
+    return 'http://${server.address.address}:${server.port}/video.raw';
+  }
+
+  Future<void> _handle(HttpRequest request) async {
+    final range = request.headers.value(HttpHeaders.rangeHeader) ?? '';
+    if (range.isNotEmpty) {
+      rangeRequests.add(range);
+    }
+    final cookie = request.headers.value(HttpHeaders.cookieHeader) ?? '';
+    final isProbe = range.trim() == 'bytes=0-0';
+    if (!isProbe && !cookie.contains(requiredCookie)) {
+      unauthorizedCount += 1;
+      request.response.statusCode = HttpStatus.forbidden;
+      await request.response.close();
+      return;
+    }
+    if (range.isEmpty) {
+      request.response.statusCode = HttpStatus.ok;
+      request.response.headers.set(HttpHeaders.acceptRangesHeader, 'bytes');
+      request.response.headers.set(HttpHeaders.contentTypeHeader, 'video/mp4');
+      request.response.headers.set(
+        HttpHeaders.contentLengthHeader,
+        '$contentLength',
+      );
+      await _writePattern(request.response, 0, contentLength - 1);
+      await request.response.close();
+      return;
+    }
+    final parsed = _parseRange(range);
+    if (parsed == null) {
+      request.response.statusCode = HttpStatus.requestedRangeNotSatisfiable;
+      request.response.headers.set(
+        HttpHeaders.contentRangeHeader,
+        'bytes */$contentLength',
+      );
+      await request.response.close();
+      return;
+    }
+    final start = parsed.$1;
+    final end = parsed.$2;
+    request.response.statusCode = HttpStatus.partialContent;
+    request.response.headers.set(HttpHeaders.acceptRangesHeader, 'bytes');
+    request.response.headers.set(HttpHeaders.contentTypeHeader, 'video/mp4');
+    request.response.headers.set(
+      HttpHeaders.contentRangeHeader,
+      'bytes $start-$end/$contentLength',
+    );
+    request.response.headers.set(
+      HttpHeaders.contentLengthHeader,
+      '${end - start + 1}',
+    );
+    await _writePattern(request.response, start, end);
+    await request.response.close();
+  }
+
+  (int, int)? _parseRange(String value) {
+    final match = RegExp(r'^bytes=(\d+)-(\d*)$').firstMatch(value.trim());
+    if (match == null) return null;
+    final start = int.tryParse(match.group(1) ?? '');
+    if (start == null || start < 0 || start >= contentLength) return null;
+    final endRaw = match.group(2) ?? '';
+    final end = endRaw.isEmpty
+        ? contentLength - 1
+        : min(contentLength - 1, int.tryParse(endRaw) ?? contentLength - 1);
+    if (end < start) return null;
+    return (start, end);
+  }
+
+  Future<void> _writePattern(HttpResponse response, int start, int end) async {
+    var offset = start;
+    while (offset <= end) {
+      final size = min(64 * 1024, end - offset + 1);
+      final bytes = Uint8List(size);
+      for (var i = 0; i < size; i++) {
+        bytes[i] = (offset + i) & 0xFF;
+      }
+      response.add(bytes);
+      offset += size;
+    }
+  }
+}
+
 void main() {
   final supported = Platform.isMacOS || Platform.isWindows;
 
@@ -531,6 +642,52 @@ void main() {
           expect(snapshot!['mode'], 'parallel');
           expect(snapshot['degradeReason'], isNull);
           await ProxyController.instance.closeSession(sessionId);
+        } finally {
+          await upstream.stop();
+        }
+      },
+      skip: !supported,
+    );
+
+    test(
+      'source auth rejection can refresh headers and continue in parallel mode',
+      () async {
+        final upstream = _CookieGuardedVideoUpstream(
+          contentLength: 8 * 1024 * 1024,
+          requiredCookie: 'auth=good',
+        );
+        await upstream.start();
+        var refreshCalls = 0;
+        try {
+          final endpoint = await ProxyController.instance.createSession(
+            PlayableMedia(
+              url: upstream.url,
+              headers: const <String, String>{'Cookie': 'auth=bad'},
+              subtitle: null,
+              progressKey: 'p9',
+            ),
+            fileKey: 'proxy-test-auth-recover',
+            onSourceAuthRejected: () async {
+              refreshCalls += 1;
+              return <String, String>{'Cookie': 'auth=good'};
+            },
+          );
+          final bytes = await _fetchRangeBytes(
+            endpoint.playbackUrl,
+            0,
+            128 * 1024 - 1,
+          );
+          expect(bytes, 128 * 1024);
+          await Future<void>.delayed(const Duration(milliseconds: 300));
+          expect(upstream.unauthorizedCount, greaterThanOrEqualTo(1));
+          expect(refreshCalls, 1);
+
+          final snapshot = ProxyController.instance.debugSessionSnapshot(
+            endpoint.proxySession!.sessionId,
+          );
+          expect(snapshot, isNotNull);
+          expect(snapshot!['mode'], 'parallel');
+          expect(snapshot['degradeReason'], isNull);
         } finally {
           await upstream.stop();
         }

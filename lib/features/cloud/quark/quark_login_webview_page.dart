@@ -1,6 +1,133 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:ma_palyer/features/cloud/quark/quark_auth_service.dart';
+
+class _QuarkWebviewAuthHelper {
+  static const quarkPan = 'https://pan.quark.cn/';
+  static const quarkDrivePc = 'https://drive-pc.quark.cn/';
+  static const desktopChromeUa =
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
+      'AppleWebKit/537.36 (KHTML, like Gecko) '
+      'Chrome/145.0.0.0 Safari/537.36';
+
+  static URLRequest buildRequest(String url, {String? referer}) {
+    return URLRequest(
+      url: WebUri(url),
+      headers: <String, String>{
+        'Accept':
+            'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,'
+            'image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+        'Accept-Language': 'en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7',
+        'Upgrade-Insecure-Requests': '1',
+        'Referer': referer ?? quarkPan,
+      },
+    );
+  }
+
+  static Future<String> collectCookieHeader(CookieManager manager) async {
+    final cookieMap = <String, String>{};
+    final allCookies = await manager.getAllCookies();
+    final allQuarkCookies = allCookies.where((cookie) {
+      final domain = cookie.domain?.toLowerCase();
+      if (domain == null || domain.isEmpty) return false;
+      return domain.contains('quark.cn');
+    }).toList();
+    final panCookies = await manager.getCookies(url: WebUri(quarkPan));
+    final drivePcCookies = await manager.getCookies(url: WebUri(quarkDrivePc));
+    for (final cookie in <Cookie>[
+      ...allQuarkCookies,
+      ...panCookies,
+      ...drivePcCookies,
+    ]) {
+      cookieMap[cookie.name] = cookie.value;
+    }
+    return cookieMap.entries
+        .map((entry) => '${entry.key}=${entry.value}')
+        .join('; ');
+  }
+
+  static Future<bool> syncCookiesToAuth(
+    QuarkAuthService authService, {
+    CookieManager? manager,
+  }) async {
+    final cookieHeader = await collectCookieHeader(
+      manager ?? CookieManager.instance(),
+    );
+    if (cookieHeader.isEmpty) return false;
+    final auth = await authService.syncAuthStateFromCookies(cookieHeader);
+    return auth != null;
+  }
+
+  static Future<bool> tryHeadlessReauth(
+    QuarkAuthService authService, {
+    Duration timeout = const Duration(seconds: 12),
+  }) async {
+    final manager = CookieManager.instance();
+    HeadlessInAppWebView? headless;
+    Timer? timer;
+    final done = Completer<bool>();
+
+    Future<void> resolve(bool value) async {
+      if (done.isCompleted) return;
+      done.complete(value);
+    }
+
+    Future<void> trySync() async {
+      if (done.isCompleted) return;
+      try {
+        final ok = await syncCookiesToAuth(authService, manager: manager);
+        if (ok) {
+          await resolve(true);
+        }
+      } catch (_) {
+        // Continue waiting for navigation or timeout.
+      }
+    }
+
+    try {
+      headless = HeadlessInAppWebView(
+        initialUrlRequest: buildRequest(quarkPan),
+        initialSettings: InAppWebViewSettings(
+          javaScriptEnabled: true,
+          useShouldOverrideUrlLoading: false,
+          domStorageEnabled: true,
+          databaseEnabled: true,
+          thirdPartyCookiesEnabled: true,
+          userAgent: desktopChromeUa,
+        ),
+        onLoadStop: (controller, url) async {
+          await trySync();
+          if (done.isCompleted) return;
+          final current = url?.toString() ?? '';
+          if (current.startsWith(quarkPan)) {
+            await controller.loadUrl(
+              urlRequest: buildRequest(quarkDrivePc, referer: quarkPan),
+            );
+            await trySync();
+          }
+        },
+      );
+      await headless.run();
+      await trySync();
+      timer = Timer(timeout, () {
+        unawaited(resolve(false));
+      });
+      final result = await done.future;
+      return result;
+    } catch (_) {
+      return false;
+    } finally {
+      timer?.cancel();
+      if (headless != null) {
+        try {
+          await headless.dispose();
+        } catch (_) {}
+      }
+    }
+  }
+}
 
 class QuarkLoginWebviewPage extends StatefulWidget {
   const QuarkLoginWebviewPage({super.key, required this.authService});
@@ -19,6 +146,25 @@ class QuarkLoginWebviewPage extends StatefulWidget {
     return result ?? false;
   }
 
+  static Future<bool> tryHeadlessReauth(QuarkAuthService authService) {
+    return _QuarkWebviewAuthHelper.tryHeadlessReauth(authService);
+  }
+
+  static Future<bool> recoverAuth(
+    BuildContext context,
+    QuarkAuthService authService,
+  ) async {
+    final navigator = Navigator.of(context);
+    final headlessOk = await tryHeadlessReauth(authService);
+    if (headlessOk) return true;
+    final result = await navigator.push<bool>(
+      MaterialPageRoute<bool>(
+        builder: (_) => QuarkLoginWebviewPage(authService: authService),
+      ),
+    );
+    return result ?? false;
+  }
+
   @override
   State<QuarkLoginWebviewPage> createState() => _QuarkLoginWebviewPageState();
 }
@@ -26,38 +172,18 @@ class QuarkLoginWebviewPage extends StatefulWidget {
 class _QuarkLoginWebviewPageState extends State<QuarkLoginWebviewPage> {
   final CookieManager _cookieManager = CookieManager.instance();
 
-  static const _quarkPan = 'https://pan.quark.cn/';
-  static const _quarkDrivePc = 'https://drive-pc.quark.cn/';
-  static const _desktopChromeUa =
-      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
-      'AppleWebKit/537.36 (KHTML, like Gecko) '
-      'Chrome/145.0.0.0 Safari/537.36';
-
   InAppWebViewController? _controller;
   bool _submitting = false;
   int _progress = 0;
   String _statusText = '请先在夸克首页登录，再进入网盘页';
-  String _currentUrl = _quarkPan;
+  String _currentUrl = _QuarkWebviewAuthHelper.quarkPan;
 
   void _logWebView(String message) {
     debugPrint('[QuarkWebView] $message');
   }
 
-  URLRequest _buildRequest(
-    String url, {
-    String? referer,
-  }) {
-    return URLRequest(
-      url: WebUri(url),
-      headers: <String, String>{
-        'Accept':
-            'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,'
-            'image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-        'Accept-Language': 'en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7',
-        'Upgrade-Insecure-Requests': '1',
-        'Referer': referer ?? _quarkPan,
-      },
-    );
+  URLRequest _buildRequest(String url, {String? referer}) {
+    return _QuarkWebviewAuthHelper.buildRequest(url, referer: referer);
   }
 
   Future<void> _trySyncCookies() async {
@@ -67,32 +193,9 @@ class _QuarkLoginWebviewPageState extends State<QuarkLoginWebviewPage> {
       _statusText = '正在检测登录状态...';
     });
     try {
-      final cookieMap = <String, String>{};
-      final allCookies = await _cookieManager.getAllCookies();
-      final allQuarkCookies = allCookies.where((cookie) {
-        final domain = cookie.domain?.toLowerCase();
-        if (domain == null || domain.isEmpty) return false;
-        return domain.contains('quark.cn');
-      }).toList();
-      final panCookies = await _cookieManager.getCookies(url: WebUri(_quarkPan));
-      final drivePcCookies = await _cookieManager.getCookies(
-        url: WebUri(_quarkDrivePc),
+      final header = await _QuarkWebviewAuthHelper.collectCookieHeader(
+        _cookieManager,
       );
-      for (final cookie in <Cookie>[
-        ...allQuarkCookies,
-        ...panCookies,
-        ...drivePcCookies,
-      ]) {
-        cookieMap[cookie.name] = cookie.value;
-      }
-      _logWebView(
-        'cookies collected: count=${cookieMap.length}, '
-        'keys=${cookieMap.keys.toList()}',
-      );
-
-      final header = cookieMap.entries
-          .map((entry) => '${entry.key}=${entry.value}')
-          .join('; ');
       if (header.isEmpty) {
         if (!mounted) return;
         setState(() {
@@ -173,7 +276,9 @@ class _QuarkLoginWebviewPageState extends State<QuarkLoginWebviewPage> {
                 OutlinedButton.icon(
                   onPressed: () {
                     _controller?.loadUrl(
-                      urlRequest: _buildRequest(_quarkPan),
+                      urlRequest: _buildRequest(
+                        _QuarkWebviewAuthHelper.quarkPan,
+                      ),
                     );
                   },
                   icon: const Icon(Icons.folder_outlined),
@@ -184,7 +289,9 @@ class _QuarkLoginWebviewPageState extends State<QuarkLoginWebviewPage> {
           ),
           Expanded(
             child: InAppWebView(
-              initialUrlRequest: _buildRequest(_quarkPan),
+              initialUrlRequest: _buildRequest(
+                _QuarkWebviewAuthHelper.quarkPan,
+              ),
               initialSettings: InAppWebViewSettings(
                 javaScriptEnabled: true,
                 useShouldOverrideUrlLoading: true,
@@ -192,7 +299,7 @@ class _QuarkLoginWebviewPageState extends State<QuarkLoginWebviewPage> {
                 databaseEnabled: true,
                 thirdPartyCookiesEnabled: true,
                 isInspectable: true,
-                userAgent: _desktopChromeUa,
+                userAgent: _QuarkWebviewAuthHelper.desktopChromeUa,
               ),
               onWebViewCreated: (controller) {
                 _controller = controller;

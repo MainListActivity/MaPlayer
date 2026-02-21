@@ -37,6 +37,7 @@ class ProxyController {
   Future<ResolvedPlaybackEndpoint> createSession(
     PlayableMedia media, {
     String? fileKey,
+    Future<Map<String, String>?> Function()? onSourceAuthRejected,
   }) async {
     if (!_isSupportedPlatform) {
       return ResolvedPlaybackEndpoint(
@@ -94,11 +95,12 @@ class ProxyController {
     final session = _ProxySession(
       sessionId: sessionId,
       sourceUrl: media.url,
-      headers: media.headers,
+      headers: Map<String, String>.from(media.headers),
       createdAt: createdAt,
       streamUrl: _server!.urlForSession(sessionId),
       logger: _log,
       onDownloadBytes: _recordAggregateDownloadedBytes,
+      onSourceAuthRejected: onSourceAuthRejected,
       chunkSize: _chunkSize,
       maxConcurrency: _maxConcurrency,
       sessionCacheWindowBytes:
@@ -345,6 +347,7 @@ class _ProxySession {
     required this.streamUrl,
     required this.logger,
     required this.onDownloadBytes,
+    required this.onSourceAuthRejected,
     required this.chunkSize,
     required this.maxConcurrency,
     required this.sessionCacheWindowBytes,
@@ -361,6 +364,7 @@ class _ProxySession {
   final String streamUrl;
   final void Function(String message) logger;
   final void Function(int bytes) onDownloadBytes;
+  final Future<Map<String, String>?> Function()? onSourceAuthRejected;
   final int chunkSize;
   final int maxConcurrency;
   final int sessionCacheWindowBytes;
@@ -375,6 +379,8 @@ class _ProxySession {
   final StreamController<ProxyStatsSnapshot> _statsController =
       StreamController<ProxyStatsSnapshot>.broadcast();
   final Map<int, Completer<bool>> _inFlight = <int, Completer<bool>>{};
+  Future<Map<String, String>?>? _pendingAuthRefresh;
+  DateTime? _lastAuthRefreshAt;
   late final _RangeMemoryCache _memoryCache;
 
   Timer? _statsTimer;
@@ -426,7 +432,7 @@ class _ProxySession {
   ProxySessionDescriptor get descriptor => ProxySessionDescriptor(
     sessionId: sessionId,
     sourceUrl: sourceUrl,
-    headers: headers,
+    headers: Map<String, String>.from(headers),
     mode: _mode,
     createdAt: createdAt,
     contentLength: _contentLength,
@@ -1083,6 +1089,7 @@ class _ProxySession {
     final end = min(length - 1, start + chunkSize - 1);
     final expectedBytes = end - start + 1;
 
+    var attemptedAuthRecovery = false;
     for (var retry = 0; retry < 3; retry++) {
       try {
         final uri = Uri.parse(sourceUrl);
@@ -1112,8 +1119,22 @@ class _ProxySession {
           continue;
         }
 
-        if (resp.statusCode == HttpStatus.forbidden ||
-            resp.statusCode == HttpStatus.unauthorized) {
+        if (_isAuthRejectedStatus(resp.statusCode)) {
+          await resp.drain<void>();
+          if (!attemptedAuthRecovery) {
+            attemptedAuthRecovery = true;
+            final refreshedHeaders = await _attemptSourceAuthRecovery();
+            if (refreshedHeaders != null && refreshedHeaders.isNotEmpty) {
+              headers
+                ..clear()
+                ..addAll(refreshedHeaders);
+              logger(
+                'session=$sessionId auth recovered for chunk=$chunkIndex; '
+                'retrying range fetch',
+              );
+              continue;
+            }
+          }
           _degradeToSingle('source auth rejected during range chunk');
           return null;
         }
@@ -1129,6 +1150,54 @@ class _ProxySession {
       }
     }
     return null;
+  }
+
+  Future<Map<String, String>?> _attemptSourceAuthRecovery() async {
+    final handler = onSourceAuthRejected;
+    if (handler == null) return null;
+    final lastRefreshAt = _lastAuthRefreshAt;
+    if (lastRefreshAt != null &&
+        DateTime.now().difference(lastRefreshAt) < const Duration(seconds: 3)) {
+      return Map<String, String>.from(headers);
+    }
+    final pending = _pendingAuthRefresh;
+    if (pending != null) {
+      return pending;
+    }
+    final future = () async {
+      try {
+        logger(
+          'session=$sessionId source auth rejected; starting re-auth flow',
+        );
+        final refreshedHeaders = await handler();
+        final success = refreshedHeaders != null && refreshedHeaders.isNotEmpty;
+        logger(
+          'session=$sessionId source auth recovery result: '
+          '${success ? 'success' : 'failed'}',
+        );
+        if (success) {
+          _lastAuthRefreshAt = DateTime.now();
+        }
+        return refreshedHeaders;
+      } catch (e, st) {
+        logger('session=$sessionId source auth recovery failed: $e\n$st');
+        return null;
+      }
+    }();
+    _pendingAuthRefresh = future;
+    try {
+      return await future;
+    } finally {
+      if (identical(_pendingAuthRefresh, future)) {
+        _pendingAuthRefresh = null;
+      }
+    }
+  }
+
+  bool _isAuthRejectedStatus(int code) {
+    return code == HttpStatus.unauthorized ||
+        code == HttpStatus.forbidden ||
+        code == HttpStatus.preconditionFailed;
   }
 
   /// Marks all in-flight chunks outside the new prefetch window as aborted.

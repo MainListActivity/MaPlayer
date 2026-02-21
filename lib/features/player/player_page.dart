@@ -1,13 +1,16 @@
 import 'dart:async';
-import 'dart:io' show Platform;
+import 'dart:io' show HttpHeaders, Platform;
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:ma_palyer/app/app_route.dart';
+import 'package:ma_palyer/features/cloud/quark/quark_auth_service.dart';
+import 'package:ma_palyer/features/cloud/quark/quark_login_webview_page.dart';
 import 'package:ma_palyer/features/cloud/quark/quark_models.dart';
 import 'package:ma_palyer/features/playback/playback_models.dart';
 import 'package:ma_palyer/features/player/media_kit_player_controller.dart';
 import 'package:ma_palyer/features/player/proxy/proxy_controller.dart';
 import 'package:ma_palyer/features/player/proxy/proxy_models.dart';
+import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
 import 'package:ma_palyer/features/playback/share_play_orchestrator.dart';
@@ -35,6 +38,7 @@ class _PlayerPageState extends State<PlayerPage> {
   late final MediaKitPlayerController _playerController;
   late final VideoController _videoController;
   late final SharePlayOrchestrator _orchestrator;
+  late final QuarkAuthService _quarkAuthService;
 
   bool _isLoading = false;
   String? _errorMessage;
@@ -49,9 +53,15 @@ class _PlayerPageState extends State<PlayerPage> {
   QuarkPlayableVariant? _currentCloudVariant;
 
   StreamSubscription<bool>? _bufferingSub;
+  StreamSubscription<PlayerLog>? _playerLogSub;
+  StreamSubscription<String>? _playerErrorSub;
   StreamSubscription<bool>? _completedSub;
   StreamSubscription<ProxyAggregateStats>? _proxyStatsSub;
   String? _proxySessionId;
+  Future<Map<String, String>?>? _pendingProxyAuthRecovery;
+  bool _isRecoveringMediaKitAuth = false;
+  String? _lastMediaKitAuthRecoverKey;
+  DateTime? _lastMediaKitAuthRecoverAt;
   bool _isBufferingNow = false;
   String _networkSpeedLabel = '--';
   String _bufferAheadLabel = '预读: --';
@@ -62,7 +72,8 @@ class _PlayerPageState extends State<PlayerPage> {
     super.initState();
     _playerController = MediaKitPlayerController();
     _videoController = VideoController(_playerController.player);
-    _orchestrator = SharePlayOrchestrator();
+    _quarkAuthService = QuarkAuthService();
+    _orchestrator = SharePlayOrchestrator(authService: _quarkAuthService);
     _bindPlayerStreams();
     _bindProxyStats();
 
@@ -80,6 +91,8 @@ class _PlayerPageState extends State<PlayerPage> {
   void dispose() {
     _bufferingSub?.cancel();
     _completedSub?.cancel();
+    _playerLogSub?.cancel();
+    _playerErrorSub?.cancel();
     _proxyStatsSub?.cancel();
     final sessionId = _proxySessionId;
     if (sessionId != null) {
@@ -103,6 +116,15 @@ class _PlayerPageState extends State<PlayerPage> {
       if (value) {
         _playNextEpisode();
       }
+    });
+    _playerLogSub = player.stream.log.listen((event) {
+      final message = '${event.prefix} ${event.text}'.trim();
+      if (!_isAuthRejectedHttpMessage(message)) return;
+      unawaited(_handleMediaKitAuthRejected(message));
+    });
+    _playerErrorSub = player.stream.error.listen((message) {
+      if (!_isAuthRejectedHttpMessage(message)) return;
+      unawaited(_handleMediaKitAuthRejected(message));
     });
   }
 
@@ -528,6 +550,7 @@ class _PlayerPageState extends State<PlayerPage> {
           ? await ProxyController.instance.createSession(
               media,
               fileKey: media.progressKey,
+              onSourceAuthRejected: _handleProxySourceAuthRejected,
             )
           : ResolvedPlaybackEndpoint(
               originalMedia: media,
@@ -582,6 +605,173 @@ class _PlayerPageState extends State<PlayerPage> {
     }
     final url = media.url.toLowerCase();
     return url.contains('/file/download');
+  }
+
+  bool _isAuthRejectedHttpMessage(String message) {
+    final lower = message.toLowerCase();
+    return lower.contains('http error 412') ||
+        lower.contains('412 precondition failed') ||
+        lower.contains('http error 401') ||
+        lower.contains('http error 403') ||
+        lower.contains(' 401 unauthorized') ||
+        lower.contains(' 403 forbidden');
+  }
+
+  String _mediaRecoverKey(PlayableMedia media) {
+    return '${media.progressKey}:${media.url}';
+  }
+
+  bool _canTriggerMediaKitAuthRecover(PlayableMedia media) {
+    if (_isRecoveringMediaKitAuth) return false;
+    final key = _mediaRecoverKey(media);
+    final lastAt = _lastMediaKitAuthRecoverAt;
+    if (_lastMediaKitAuthRecoverKey == key &&
+        lastAt != null &&
+        DateTime.now().difference(lastAt) < const Duration(seconds: 20)) {
+      return false;
+    }
+    return true;
+  }
+
+  Future<void> _handleMediaKitAuthRejected(String message) async {
+    final media = _currentMedia;
+    if (!mounted || media == null || !_isLikelyQuarkMedia(media)) return;
+    if (!_canTriggerMediaKitAuthRecover(media)) return;
+    final key = _mediaRecoverKey(media);
+    _isRecoveringMediaKitAuth = true;
+    _lastMediaKitAuthRecoverKey = key;
+    _lastMediaKitAuthRecoverAt = DateTime.now();
+    try {
+      if (mounted) {
+        setState(() {
+          _errorMessage = '检测到网盘鉴权失效(HTTP 412/401/403)，正在重新认证...';
+        });
+      }
+      final nextHeaders = await _handleProxySourceAuthRejected();
+      if (!mounted || nextHeaders == null || nextHeaders.isEmpty) return;
+      final current = _currentMedia;
+      if (current == null) return;
+      if (_mediaRecoverKey(current) != key) return;
+      await _openMedia(
+        PlayableMedia(
+          url: current.url,
+          headers: nextHeaders,
+          subtitle: current.subtitle,
+          progressKey: current.progressKey,
+          variants: current.variants,
+          selectedVariant: current.selectedVariant,
+        ),
+      );
+    } catch (_) {
+      // _openMedia already handles user-visible errors.
+    } finally {
+      _isRecoveringMediaKitAuth = false;
+    }
+  }
+
+  Future<Map<String, String>?> _handleProxySourceAuthRejected() {
+    final pending = _pendingProxyAuthRecovery;
+    if (pending != null) {
+      return pending;
+    }
+    final future = _runProxySourceAuthRecovery();
+    _pendingProxyAuthRecovery = future;
+    future.whenComplete(() {
+      if (identical(_pendingProxyAuthRecovery, future)) {
+        _pendingProxyAuthRecovery = null;
+      }
+    });
+    return future;
+  }
+
+  Future<Map<String, String>?> _runProxySourceAuthRecovery() async {
+    final media = _currentMedia;
+    if (!mounted || media == null || !_isLikelyQuarkMedia(media)) {
+      return null;
+    }
+    final recovered = await QuarkLoginWebviewPage.recoverAuth(
+      context,
+      _quarkAuthService,
+    );
+    if (!recovered) {
+      return null;
+    }
+    final nextHeaders = await _refreshHeadersFromAuth(media.headers);
+    if (nextHeaders == null || nextHeaders.isEmpty) {
+      return null;
+    }
+    if (mounted) {
+      setState(() {
+        final current = _currentMedia;
+        if (current != null) {
+          _currentMedia = PlayableMedia(
+            url: current.url,
+            headers: nextHeaders,
+            subtitle: current.subtitle,
+            progressKey: current.progressKey,
+            variants: current.variants,
+            selectedVariant: current.selectedVariant,
+          );
+        }
+      });
+    }
+    return nextHeaders;
+  }
+
+  Future<Map<String, String>?> _refreshHeadersFromAuth(
+    Map<String, String> currentHeaders,
+  ) async {
+    final state = await _quarkAuthService.currentAuthState();
+    final cookie = state?.cookie?.trim() ?? '';
+    if (cookie.isEmpty) return null;
+    final next = Map<String, String>.from(currentHeaders);
+    _setHeaderCaseInsensitive(next, HttpHeaders.cookieHeader, cookie);
+    if (_getHeaderCaseInsensitive(next, HttpHeaders.refererHeader) == null) {
+      next[HttpHeaders.refererHeader] = 'https://pan.quark.cn/';
+    }
+    return next;
+  }
+
+  bool _isLikelyQuarkMedia(PlayableMedia media) {
+    final url = media.url.toLowerCase();
+    if (url.contains('quark.cn')) return true;
+    final referer =
+        _getHeaderCaseInsensitive(
+          media.headers,
+          HttpHeaders.refererHeader,
+        )?.toLowerCase() ??
+        '';
+    return referer.contains('quark.cn');
+  }
+
+  String? _getHeaderCaseInsensitive(Map<String, String> headers, String key) {
+    final target = key.toLowerCase();
+    for (final entry in headers.entries) {
+      if (entry.key.toLowerCase() == target) {
+        return entry.value;
+      }
+    }
+    return null;
+  }
+
+  void _setHeaderCaseInsensitive(
+    Map<String, String> headers,
+    String key,
+    String value,
+  ) {
+    final target = key.toLowerCase();
+    String? matchedKey;
+    for (final existingKey in headers.keys) {
+      if (existingKey.toLowerCase() == target) {
+        matchedKey = existingKey;
+        break;
+      }
+    }
+    if (matchedKey != null) {
+      headers[matchedKey] = value;
+      return;
+    }
+    headers[key] = value;
   }
 
   void _showEpisodesDialog() {
