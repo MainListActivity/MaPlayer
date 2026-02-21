@@ -20,8 +20,7 @@ class ProxyController {
   static const int _maxCacheBytes = 2 * 1024 * 1024 * 1024;
 
   final Map<String, _ProxySession> _sessions = <String, _ProxySession>{};
-  final StreamController<ProxyAggregateStats> _aggregateStatsController =
-      StreamController<ProxyAggregateStats>.broadcast();
+  StreamController<ProxyAggregateStats>? _aggregateStatsController;
   LocalStreamProxyServer? _server;
   Timer? _aggregateStatsTimer;
   int _aggregateDownloadedBytesTotal = 0;
@@ -126,7 +125,7 @@ class ProxyController {
   Stream<ProxyAggregateStats> watchAggregateStats() {
     _ensureAggregateTicker();
     _emitAggregateSnapshot();
-    return _aggregateStatsController.stream;
+    return _aggregateController().stream;
   }
 
   Future<void> closeSession(String sessionId) async {
@@ -150,11 +149,18 @@ class ProxyController {
     await invalidateAll();
     _aggregateStatsTimer?.cancel();
     _aggregateStatsTimer = null;
-    if (!_aggregateStatsController.isClosed) {
-      await _aggregateStatsController.close();
-    }
     await _server?.stop();
     _server = null;
+  }
+
+  StreamController<ProxyAggregateStats> _aggregateController() {
+    final existing = _aggregateStatsController;
+    if (existing != null && !existing.isClosed) {
+      return existing;
+    }
+    final created = StreamController<ProxyAggregateStats>.broadcast();
+    _aggregateStatsController = created;
+    return created;
   }
 
   void _ensureAggregateTicker() {
@@ -172,7 +178,8 @@ class ProxyController {
   }
 
   void _emitAggregateSnapshot() {
-    if (_aggregateStatsController.isClosed) return;
+    final controller = _aggregateController();
+    if (controller.isClosed) return;
     final now = DateTime.now();
     final elapsedMs = max(
       1,
@@ -190,7 +197,7 @@ class ProxyController {
       bufferedBytesAhead += latest.bufferedBytesAhead;
       activeWorkers += latest.activeWorkers;
     }
-    _aggregateStatsController.add(
+    controller.add(
       ProxyAggregateStats(
         proxyRunning: _server != null,
         downloadBps: downloadBps,
@@ -403,6 +410,7 @@ class _ProxySession {
   final int maxConcurrency;
   final int aheadWindowBytes;
   final int behindWindowBytes;
+  static const bool _verboseUpstreamHeaderLogs = false;
 
   final HttpClient _client;
   final _AsyncSemaphore _semaphore;
@@ -1194,6 +1202,7 @@ class _ProxySession {
   }
 
   void _logUpstreamRequestHeaders(String scene, HttpHeaders requestHeaders) {
+    if (!_verboseUpstreamHeaderLogs) return;
     final referer = requestHeaders.value(HttpHeaders.refererHeader) ?? '';
     final userAgent = requestHeaders.value(HttpHeaders.userAgentHeader) ?? '';
     final cookie = requestHeaders.value(HttpHeaders.cookieHeader) ?? '';
