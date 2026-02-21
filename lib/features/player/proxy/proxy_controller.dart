@@ -811,11 +811,34 @@ class _ProxySession {
       return;
     }
 
+    // Detect seek: large jump from current playback position.
+    final isSeek =
+        (requested.start - _playbackOffset).abs() > _seekThresholdBytes &&
+        _playbackOffset > 0;
+    if (isSeek) {
+      logger(
+        'session=$sessionId seek detected: '
+        'from=$_playbackOffset to=${requested.start}, '
+        'aborting out-of-window prefetch tasks',
+      );
+      _abortOutOfWindowChunks(requested.start);
+    }
     _playbackOffset = requested.start;
+
+    // Start background prefetch for the new window (non-blocking).
     final startupEnd = min(
       requested.end!,
       requested.start + max(chunkSize, 512 * 1024).toInt() - 1,
     );
+    _ensureRangeAvailableBackground(requested.start, startupEnd);
+
+    if (isSeek) {
+      // Bridge: stream directly from upstream so media_kit gets data
+      // immediately without waiting for background chunks to arrive.
+      await _serveBridge(request, requested);
+      return;
+    }
+
     await _ensureRangeAvailable(requested.start, startupEnd);
     if (_mode == ProxyMode.single) {
       await _serveSingle(request, requested);
@@ -947,6 +970,21 @@ class _ProxySession {
     for (var i = needStartChunk; i <= needEndChunk; i++) {
       final ok = await _waitForChunk(i);
       if (!ok || _mode == ProxyMode.single) return;
+    }
+  }
+
+  /// Kicks off background prefetch for the window around [start] without
+  /// waiting for any chunk to complete. Used on seek to warm the cache while
+  /// _serveBridge handles the immediate response.
+  void _ensureRangeAvailableBackground(int start, int end) {
+    final length = _contentLength;
+    if (length == null || length <= 0) return;
+    final windowStart = max(0, start - behindWindowBytes);
+    final windowEnd = min(length - 1, start + aheadWindowBytes);
+    final prefetchStartChunk = windowStart ~/ chunkSize;
+    final prefetchEndChunk = windowEnd ~/ chunkSize;
+    for (var i = prefetchStartChunk; i <= prefetchEndChunk; i++) {
+      _startPrefetch(i);
     }
   }
 
