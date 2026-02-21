@@ -813,8 +813,9 @@ class _ProxySession {
 
     // Detect seek: large jump from current playback position.
     final isSeek =
-        (requested.start - _playbackOffset).abs() > _seekThresholdBytes &&
-        _playbackOffset > 0;
+        requested.start > 0 &&
+        _playbackOffset > 0 &&
+        (requested.start - _playbackOffset).abs() > _seekThresholdBytes;
     if (isSeek) {
       logger(
         'session=$sessionId seek detected: '
@@ -830,7 +831,7 @@ class _ProxySession {
       requested.end!,
       requested.start + max(chunkSize, 512 * 1024).toInt() - 1,
     );
-    _ensureRangeAvailableBackground(requested.start, startupEnd);
+    _ensureRangeAvailableBackground(requested.start);
 
     if (isSeek) {
       // Bridge: stream directly from upstream so media_kit gets data
@@ -976,7 +977,7 @@ class _ProxySession {
   /// Kicks off background prefetch for the window around [start] without
   /// waiting for any chunk to complete. Used on seek to warm the cache while
   /// _serveBridge handles the immediate response.
-  void _ensureRangeAvailableBackground(int start, int end) {
+  void _ensureRangeAvailableBackground(int start) {
     final length = _contentLength;
     if (length == null || length <= 0) return;
     final windowStart = max(0, start - behindWindowBytes);
