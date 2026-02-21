@@ -516,6 +516,9 @@ class _ProxySession {
       // Open in append mode — does NOT truncate existing data.
       _writeRaf = await _cacheFile.open(mode: FileMode.writeOnlyAppend);
       _downloadedChunks.addAll(cachedChunks);
+      for (final idx in cachedChunks) {
+        _chunkAccessOrder.add(idx);
+      }
       logger(
         'session=$sessionId warm-cache restored '
         '${cachedChunks.length} chunks (contentLength=$_contentLength)',
@@ -889,6 +892,7 @@ class _ProxySession {
       final end = requested.end!;
       while (offset <= end) {
         final chunkIndex = offset ~/ chunkSize;
+        _touchChunk(chunkIndex);
         final chunkReady = await _ensureChunkReady(chunkIndex);
         if (!chunkReady || _mode == ProxyMode.single) {
           _degradeToSingle('chunk $chunkIndex not ready during serve');
@@ -1194,6 +1198,8 @@ class _ProxySession {
         // Store in memory buffer so serve can read immediately.
         _chunkBuffer[chunkIndex] = data;
         _downloadedChunks.add(chunkIndex);
+        _touchChunk(chunkIndex);
+        _evictChunksIfNeeded();
         // Signal serve that the chunk is ready before disk write completes.
         completer.complete(true);
         // Persist to disk asynchronously — does not block serve.
