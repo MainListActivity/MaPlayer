@@ -104,6 +104,7 @@ class ProxyController {
       aheadWindowBytes: _aheadWindowBytes,
       behindWindowBytes: _behindWindowBytes,
       maxOpenEndedResponseBytes: _maxOpenEndedResponseBytes,
+      maxCacheBytes: _maxCacheBytes,
     );
     await session.initialize();
     _sessions[sessionId] = session;
@@ -398,6 +399,7 @@ class _ProxySession {
     required this.aheadWindowBytes,
     required this.behindWindowBytes,
     required this.maxOpenEndedResponseBytes,
+    required this.maxCacheBytes,
   }) : _client = HttpClient(),
        _semaphore = _AsyncSemaphore(maxConcurrency);
 
@@ -414,6 +416,7 @@ class _ProxySession {
   final int aheadWindowBytes;
   final int behindWindowBytes;
   final int maxOpenEndedResponseBytes;
+  final int maxCacheBytes;
   static const bool _verboseUpstreamHeaderLogs = false;
 
   final HttpClient _client;
@@ -443,6 +446,7 @@ class _ProxySession {
   String? _degradeReason;
   int? _contentLength;
 
+  late final int _maxChunks;
   int _activeWorkers = 0;
   int _playbackOffset = 0;
   static const int _seekThresholdBytes = 4 * 1024 * 1024; // 4 MB
@@ -471,6 +475,7 @@ class _ProxySession {
   );
 
   Future<void> initialize() async {
+    _maxChunks = (maxCacheBytes / chunkSize).floor().clamp(16, 1024);
     _cacheFile = File('${cacheRoot.path}/$sessionId.bin');
     _metaFile = File('${cacheRoot.path}/$sessionId.json');
 
