@@ -15,8 +15,8 @@ class ProxyController {
 
   static const int _chunkSize = 2 * 1024 * 1024;
   static const int _maxConcurrency = 8;
-  static const int _aheadWindowBytes = 192 * 1024 * 1024;
-  static const int _behindWindowBytes = 32 * 1024 * 1024;
+  static const int _sessionCacheWindowBytes = 500 * 1024 * 1024;
+  static const int _priorityBufferSeconds = 120;
   static const int _maxOpenEndedResponseBytes = 64 * 1024 * 1024;
   static const int _maxCacheBytes = 2 * 1024 * 1024 * 1024;
 
@@ -29,6 +29,10 @@ class ProxyController {
   DateTime _aggregateStatsLastAt = DateTime.now();
 
   bool get _isSupportedPlatform => Platform.isMacOS || Platform.isWindows;
+
+  // Test-only knobs to shrink prefetch/cache windows for fast unit tests.
+  static int? debugSessionCacheWindowBytesOverride;
+  static int? debugPriorityBufferSecondsOverride;
 
   Future<ResolvedPlaybackEndpoint> createSession(
     PlayableMedia media, {
@@ -101,10 +105,11 @@ class ProxyController {
       onDownloadBytes: _recordAggregateDownloadedBytes,
       chunkSize: _chunkSize,
       maxConcurrency: _maxConcurrency,
-      aheadWindowBytes: _aheadWindowBytes,
-      behindWindowBytes: _behindWindowBytes,
+      sessionCacheWindowBytes:
+          debugSessionCacheWindowBytesOverride ?? _sessionCacheWindowBytes,
+      priorityBufferSeconds:
+          debugPriorityBufferSecondsOverride ?? _priorityBufferSeconds,
       maxOpenEndedResponseBytes: _maxOpenEndedResponseBytes,
-      maxCacheBytes: _maxCacheBytes,
     );
     await session.initialize();
     _sessions[sessionId] = session;
@@ -325,10 +330,7 @@ class ProxyController {
 }
 
 class LocalStreamProxyServer {
-  LocalStreamProxyServer({
-    required this.onStreamRequest,
-    required this.logger,
-  });
+  LocalStreamProxyServer({required this.onStreamRequest, required this.logger});
 
   final Future<void> Function(HttpRequest request, String sessionId)
   onStreamRequest;
@@ -401,10 +403,9 @@ class _ProxySession {
     required this.onDownloadBytes,
     required this.chunkSize,
     required this.maxConcurrency,
-    required this.aheadWindowBytes,
-    required this.behindWindowBytes,
+    required this.sessionCacheWindowBytes,
+    required this.priorityBufferSeconds,
     required this.maxOpenEndedResponseBytes,
-    required this.maxCacheBytes,
   }) : _client = HttpClient(),
        _semaphore = _AsyncSemaphore(maxConcurrency);
 
@@ -418,10 +419,9 @@ class _ProxySession {
   final void Function(int bytes) onDownloadBytes;
   final int chunkSize;
   final int maxConcurrency;
-  final int aheadWindowBytes;
-  final int behindWindowBytes;
+  final int sessionCacheWindowBytes;
+  final int priorityBufferSeconds;
   final int maxOpenEndedResponseBytes;
-  final int maxCacheBytes;
   static const bool _verboseUpstreamHeaderLogs = false;
 
   final HttpClient _client;
@@ -441,7 +441,6 @@ class _ProxySession {
 
   late final File _cacheFile;
   late final File _metaFile;
-  late final int _maxChunks;
   RandomAccessFile? _writeRaf;
 
   Timer? _statsTimer;
@@ -457,8 +456,25 @@ class _ProxySession {
   int _activeWorkers = 0;
   int _playbackOffset = 0;
   int? _restoredPlaybackPosition;
+  int _cacheWindowAnchor = 0;
+  int _cacheWindowStart = 0;
+  int _cacheWindowEnd = 0;
+  DateTime? _lastPlaybackSampleAt;
+  int? _lastPlaybackSampleOffset;
+  double _playbackBytesPerSecond = 1.5 * 1024 * 1024; // 12 Mbps default
   static const int _seekThresholdBytes = 4 * 1024 * 1024; // 4 MB
+  static const Duration _seekDetectionWarmup = Duration(seconds: 3);
+  static const int _seekDetectionWarmupRequests = 3;
+  static const int _seekStableSequentialHits = 2;
+  static const int _probeHeadBytes = 2 * 1024 * 1024;
+  static const int _probeTailBytes = 16 * 1024 * 1024;
   final Set<int> _abortedChunks = <int>{};
+  DateTime? _firstParallelRequestAt;
+  int _parallelRequestCount = 0;
+  int? _lastRequestStartForSeek;
+  int? _lastRequestEndForSeek;
+  int _stableSequentialHits = 0;
+  bool _seekDetectionEnabled = false;
 
   int _downloadBytesTotal = 0;
   int _serveBytesTotal = 0;
@@ -486,7 +502,6 @@ class _ProxySession {
   int? get restoredPlaybackPosition => _restoredPlaybackPosition;
 
   Future<void> initialize() async {
-    _maxChunks = (maxCacheBytes ~/ chunkSize).clamp(16, 1024);
     _cacheFile = File('${cacheRoot.path}/$sessionId.bin');
     _metaFile = File('${cacheRoot.path}/$sessionId.json');
 
@@ -519,9 +534,11 @@ class _ProxySession {
     final probe = await _probeRangeSupport();
     _contentLength = probe.contentLength;
     _contentType = probe.contentType;
+    _updateCacheWindow(0);
 
     // --- Warm-cache: validate and restore ---
-    final canWarm = cachedContentLength != null &&
+    final canWarm =
+        cachedContentLength != null &&
         _contentLength != null &&
         cachedContentLength == _contentLength &&
         cachedChunks.isNotEmpty &&
@@ -544,15 +561,20 @@ class _ProxySession {
       // detected (both sides are known and differ). A probe failure
       // (_contentLength == null) is likely a transient network issue — leave
       // the cache files in place so they can be reused on the next open.
-      final definiteMismatch = cachedContentLength != null &&
+      final definiteMismatch =
+          cachedContentLength != null &&
           _contentLength != null &&
           cachedContentLength != _contentLength;
       if (definiteMismatch) {
         if (await _cacheFile.exists()) {
-          try { await _cacheFile.delete(); } catch (_) {}
+          try {
+            await _cacheFile.delete();
+          } catch (_) {}
         }
         if (await _metaFile.exists()) {
-          try { await _metaFile.delete(); } catch (_) {}
+          try {
+            await _metaFile.delete();
+          } catch (_) {}
         }
         logger(
           'session=$sessionId cache invalidated: '
@@ -590,7 +612,10 @@ class _ProxySession {
     _statsTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (_statsController.isClosed) return;
       final now = DateTime.now();
-      final elapsedMs = max(1, now.difference(_statsLastSampleAt).inMilliseconds);
+      final elapsedMs = max(
+        1,
+        now.difference(_statsLastSampleAt).inMilliseconds,
+      );
       final downloadDelta = _downloadBytesTotal - _downloadBytesLastSample;
       final serveDelta = _serveBytesTotal - _serveBytesLastSample;
       final snapshot = ProxyStatsSnapshot(
@@ -710,11 +735,14 @@ class _ProxySession {
     final upstreamResponse = await upstreamRequest.close();
     request.response.statusCode = upstreamResponse.statusCode;
     _copyResponseHeaders(upstreamResponse.headers, request.response.headers);
+    var offset = range?.start ?? 0;
 
     await for (final chunk in upstreamResponse) {
       _recordDownloadedBytes(chunk.length);
       _recordServedBytes(chunk.length);
       request.response.add(chunk);
+      offset += chunk.length;
+      _playbackOffset = offset;
     }
     await request.response.close();
   }
@@ -723,7 +751,10 @@ class _ProxySession {
   /// client, bypassing the chunk cache. Used immediately after a seek so
   /// media_kit gets data without waiting for background downloads to complete.
   /// Does not write to the cache to avoid races with parallel prefetch tasks.
-  Future<void> _serveBridge(HttpRequest request, _RequestRange requested) async {
+  Future<void> _serveBridge(
+    HttpRequest request,
+    _RequestRange requested,
+  ) async {
     if (_isDisposing || _isDisposed) {
       request.response.statusCode = HttpStatus.gone;
       await request.response.close();
@@ -756,15 +787,45 @@ class _ProxySession {
       _logUpstreamRequestHeaders('serveBridge', upstreamRequest.headers);
 
       final upstreamResponse = await upstreamRequest.close();
+      var offset = requested.start;
       await for (final chunk in upstreamResponse) {
         _recordDownloadedBytes(chunk.length);
         _recordServedBytes(chunk.length);
         request.response.add(chunk);
+        offset += chunk.length;
+        _playbackOffset = offset;
       }
     } catch (e) {
       if (!_isDisposing && !_isDisposed && !_isClientClosedError(e)) {
         logger('session=$sessionId bridge failed: $e');
       }
+    }
+    await request.response.close();
+  }
+
+  /// Continues an already-started response by streaming the remaining bytes
+  /// from upstream. Must not touch status code or response headers.
+  Future<void> _serveSingleTail(
+    HttpRequest request,
+    _RequestRange requested,
+  ) async {
+    final uri = Uri.parse(sourceUrl);
+    final upstreamRequest = await _client.getUrl(uri);
+    _applyHeaders(upstreamRequest.headers, headers);
+    upstreamRequest.headers.set(
+      HttpHeaders.rangeHeader,
+      'bytes=${requested.start}-${requested.end!}',
+    );
+    _logUpstreamRequestHeaders('serveSingleTail', upstreamRequest.headers);
+
+    final upstreamResponse = await upstreamRequest.close();
+    var offset = requested.start;
+    await for (final chunk in upstreamResponse) {
+      _recordDownloadedBytes(chunk.length);
+      _recordServedBytes(chunk.length);
+      request.response.add(chunk);
+      offset += chunk.length;
+      _playbackOffset = offset;
     }
     await request.response.close();
   }
@@ -837,18 +898,61 @@ class _ProxySession {
       return;
     }
 
-    // Detect seek: large jump from current playback position.
-    final isSeek =
+    final previousOffset = _playbackOffset;
+    final previousRequestStart = _lastRequestStartForSeek;
+    final previousRequestEnd = _lastRequestEndForSeek;
+    _updateSeekDetectionState(requested.start, requested.end!);
+    _updatePlaybackRate(requested.start);
+
+    // Detect seek only after startup warmup and stable sequential playback.
+    var isSeek = false;
+    final seekBaseline = previousRequestStart ?? previousOffset;
+    final probeJump = _isLikelyProbeJump(seekBaseline, requested.start, length);
+    final startupProbeJump = probeJump && !_seekDetectionEnabled;
+    if (!startupProbeJump) {
+      _updateCacheWindow(requested.start);
+    } else {
+      logger(
+        'session=$sessionId startup probe jump: keep cache window '
+        'at anchor=$_cacheWindowAnchor, requestStart=${requested.start}',
+      );
+    }
+    final jump = (requested.start - seekBaseline).abs();
+    final overlapsPreviousRequest =
+        previousRequestStart != null &&
+        previousRequestEnd != null &&
+        requested.start >= previousRequestStart &&
+        requested.start <= previousRequestEnd;
+    final sequentialToPreviousRequest =
+        previousRequestEnd != null && requested.start == previousRequestEnd + 1;
+    final jumpLooksLikeSeek =
         requested.start > 0 &&
-        _playbackOffset > 0 &&
-        (requested.start - _playbackOffset).abs() > _seekThresholdBytes;
+        seekBaseline > 0 &&
+        jump > _seekThresholdBytes &&
+        !overlapsPreviousRequest &&
+        !sequentialToPreviousRequest;
+    if (jumpLooksLikeSeek && _seekDetectionEnabled) {
+      if (probeJump) {
+        logger(
+          'session=$sessionId probe jump ignored: '
+          'from=$seekBaseline to=${requested.start}',
+        );
+      } else {
+        isSeek = true;
+      }
+    } else if (jumpLooksLikeSeek && !_seekDetectionEnabled) {
+      logger(
+        'session=$sessionId jump ignored before seek detection ready: '
+        'from=$seekBaseline to=${requested.start}',
+      );
+    }
     if (isSeek) {
       logger(
         'session=$sessionId seek detected: '
-        'from=$_playbackOffset to=${requested.start}, '
+        'from=$seekBaseline to=${requested.start}, '
         'aborting out-of-window prefetch tasks',
       );
-      _abortOutOfWindowChunks(requested.start);
+      _abortOutOfWindowChunks();
     }
     _playbackOffset = requested.start;
 
@@ -903,9 +1007,9 @@ class _ProxySession {
 
     final raf = await _cacheFile.open(mode: FileMode.read);
     var degraded = false;
+    var offset = requested.start;
+    final end = requested.end!;
     try {
-      var offset = requested.start;
-      final end = requested.end!;
       while (offset <= end) {
         final chunkIndex = offset ~/ chunkSize;
         final chunkReady = await _ensureChunkReady(chunkIndex);
@@ -953,7 +1057,9 @@ class _ProxySession {
         }
 
         if (data.isEmpty) {
-          throw StateError('cache data missing at offset=$offset after chunk ready');
+          throw StateError(
+            'cache data missing at offset=$offset after chunk ready',
+          );
         }
         _recordServedBytes(data.length);
         request.response.add(data);
@@ -964,7 +1070,10 @@ class _ProxySession {
       await raf.close();
     }
     if (degraded) {
-      await _serveSingle(request, requested);
+      await _serveSingleTail(
+        request,
+        _RequestRange(start: offset, end: requested.end),
+      );
       return;
     }
     await request.response.close();
@@ -976,22 +1085,26 @@ class _ProxySession {
 
     final needStartChunk = start ~/ chunkSize;
     final needEndChunk = end ~/ chunkSize;
+    final priorityEnd = _priorityWindowEnd(start, length);
+    final priorityStartChunk = start ~/ chunkSize;
+    final priorityEndChunk = priorityEnd ~/ chunkSize;
 
-    final windowStart = max(0, start - behindWindowBytes);
-    final windowEnd = min(length - 1, start + aheadWindowBytes);
-    final prefetchStartChunk = windowStart ~/ chunkSize;
-    final prefetchEndChunk = windowEnd ~/ chunkSize;
-
-    // Start all prefetch chunks in the background (non-blocking).
-    for (var i = prefetchStartChunk; i <= prefetchEndChunk; i++) {
+    // Stage 1: prioritize current position to ~2 minutes ahead.
+    for (var i = priorityStartChunk; i <= priorityEndChunk; i++) {
+      _startPrefetch(i);
+    }
+    // Stage 2: then fill the remaining cache window (up to anchor + 500 MB).
+    final windowStartChunk = _cacheWindowStart ~/ chunkSize;
+    final windowEndChunk = _cacheWindowEnd ~/ chunkSize;
+    for (var i = windowStartChunk; i <= windowEndChunk; i++) {
+      if (i >= priorityStartChunk && i <= priorityEndChunk) continue;
       _startPrefetch(i);
     }
 
     // Track cache hit stats.
     final requestedBytes = end - start + 1;
     _requestedBytes += requestedBytes;
-    final cachedChunks = _countCachedChunksInRange(needStartChunk, needEndChunk);
-    _cacheHitBytes += cachedChunks * chunkSize;
+    _cacheHitBytes += _countCachedBytesInRange(start, end);
 
     // Wait for the chunks that are required for the current request.
     for (var i = needStartChunk; i <= needEndChunk; i++) {
@@ -1006,23 +1119,144 @@ class _ProxySession {
   void _ensureRangeAvailableBackground(int start) {
     final length = _contentLength;
     if (length == null || length <= 0) return;
-    final windowStart = max(0, start - behindWindowBytes);
-    final windowEnd = min(length - 1, start + aheadWindowBytes);
-    final prefetchStartChunk = windowStart ~/ chunkSize;
-    final prefetchEndChunk = windowEnd ~/ chunkSize;
-    for (var i = prefetchStartChunk; i <= prefetchEndChunk; i++) {
+    _updateCacheWindow(start);
+    final priorityEnd = _priorityWindowEnd(start, length);
+    final priorityStartChunk = start ~/ chunkSize;
+    final priorityEndChunk = priorityEnd ~/ chunkSize;
+    for (var i = priorityStartChunk; i <= priorityEndChunk; i++) {
+      _startPrefetch(i);
+    }
+    final windowStartChunk = _cacheWindowStart ~/ chunkSize;
+    final windowEndChunk = _cacheWindowEnd ~/ chunkSize;
+    for (var i = windowStartChunk; i <= windowEndChunk; i++) {
+      if (i >= priorityStartChunk && i <= priorityEndChunk) continue;
       _startPrefetch(i);
     }
   }
 
-  int _countCachedChunksInRange(int startChunk, int endChunk) {
-    var count = 0;
-    for (var i = startChunk; i <= endChunk; i++) {
-      if (_downloadedChunks.contains(i)) {
-        count += 1;
+  int _countCachedBytesInRange(int start, int end) {
+    var hitBytes = 0;
+    var offset = start;
+    while (offset <= end) {
+      final chunkIndex = offset ~/ chunkSize;
+      if (!_downloadedChunks.contains(chunkIndex)) {
+        final chunkStart = chunkIndex * chunkSize;
+        offset = chunkStart + chunkSize;
+        continue;
+      }
+      final chunkStart = chunkIndex * chunkSize;
+      final chunkEnd = min(
+        (_contentLength ?? 0) - 1,
+        chunkStart + chunkSize - 1,
+      );
+      final coveredStart = max(offset, chunkStart);
+      final coveredEnd = min(end, chunkEnd);
+      if (coveredEnd >= coveredStart) {
+        hitBytes += coveredEnd - coveredStart + 1;
+      }
+      offset = chunkEnd + 1;
+    }
+    return hitBytes;
+  }
+
+  int _priorityWindowEnd(int start, int length) {
+    final minPriorityBytes = min(32 * 1024 * 1024, sessionCacheWindowBytes);
+    final targetBytes = (_playbackBytesPerSecond * priorityBufferSeconds)
+        .round()
+        .clamp(minPriorityBytes, sessionCacheWindowBytes);
+    return min(length - 1, start + targetBytes - 1);
+  }
+
+  void _updatePlaybackRate(int newStart) {
+    final now = DateTime.now();
+    final prevAt = _lastPlaybackSampleAt;
+    final prevOffset = _lastPlaybackSampleOffset;
+    _lastPlaybackSampleAt = now;
+    _lastPlaybackSampleOffset = newStart;
+    if (prevAt == null || prevOffset == null) return;
+    final dt = now.difference(prevAt).inMilliseconds;
+    if (dt <= 0) return;
+    final deltaBytes = newStart - prevOffset;
+    // Ignore backwards jumps and very large jumps from startup probing/seek.
+    if (deltaBytes <= 0 || deltaBytes > _seekThresholdBytes) return;
+    if (deltaBytes < 64 * 1024) return;
+    final instant = deltaBytes * 1000.0 / dt;
+    // EWMA for stability so short request jitters don't swing window size.
+    _playbackBytesPerSecond =
+        (_playbackBytesPerSecond * 0.75) + (instant * 0.25);
+    _playbackBytesPerSecond = _playbackBytesPerSecond.clamp(
+      256 * 1024,
+      8 * 1024 * 1024,
+    );
+  }
+
+  void _updateSeekDetectionState(int requestedStart, int requestedEnd) {
+    final now = DateTime.now();
+    _firstParallelRequestAt ??= now;
+    _parallelRequestCount += 1;
+
+    final previousStart = _lastRequestStartForSeek;
+    final previousEnd = _lastRequestEndForSeek;
+    if (previousStart != null) {
+      final delta = requestedStart - previousStart;
+      final overlapsPrevious =
+          previousEnd != null &&
+          requestedStart >= previousStart &&
+          requestedStart <= previousEnd;
+      final sequentialToPrevious =
+          previousEnd != null && requestedStart == previousEnd + 1;
+      if (overlapsPrevious || sequentialToPrevious) {
+        _stableSequentialHits += 1;
+      } else if (delta >= 0 && delta <= _seekThresholdBytes) {
+        _stableSequentialHits += 1;
+      } else if (delta.abs() <= 128 * 1024) {
+        // Nearby duplicate request, keep current streak.
+      } else {
+        _stableSequentialHits = 0;
       }
     }
-    return count;
+    _lastRequestStartForSeek = requestedStart;
+    _lastRequestEndForSeek = requestedEnd;
+
+    if (_seekDetectionEnabled) return;
+    final firstAt = _firstParallelRequestAt;
+    if (firstAt == null) return;
+    final warmedUp = now.difference(firstAt) >= _seekDetectionWarmup;
+    final enoughRequests = _parallelRequestCount > _seekDetectionWarmupRequests;
+    final stablePlayback = _stableSequentialHits >= _seekStableSequentialHits;
+    if (warmedUp && enoughRequests && stablePlayback) {
+      _seekDetectionEnabled = true;
+      logger(
+        'session=$sessionId seek detection enabled: '
+        'requests=$_parallelRequestCount, stableHits=$_stableSequentialHits',
+      );
+    }
+  }
+
+  bool _isLikelyProbeJump(int from, int to, int length) {
+    if (length <= 0) return false;
+    final headLimit = min(length - 1, max(chunkSize, _probeHeadBytes));
+    final tailStart = max(0, length - max(_probeTailBytes, chunkSize * 4));
+    // For short files, head/tail probe zones overlap; don't classify as probe.
+    if (tailStart <= headLimit) return false;
+    final fromHead = from <= headLimit;
+    final toHead = to <= headLimit;
+    final fromTail = from >= tailStart;
+    final toTail = to >= tailStart;
+    return (fromHead && toTail) || (fromTail && toHead);
+  }
+
+  void _updateCacheWindow(int anchorStart) {
+    final length = _contentLength;
+    if (length == null || length <= 0) return;
+    _cacheWindowAnchor = anchorStart.clamp(0, max(0, length - 1));
+    _cacheWindowStart = _cacheWindowAnchor;
+    _cacheWindowEnd = min(
+      length - 1,
+      _cacheWindowAnchor + sessionCacheWindowBytes - 1,
+    );
+    _evictChunksIfNeeded();
+    _abortOutOfWindowChunks();
   }
 
   void _touchChunk(int chunkIndex) {
@@ -1030,13 +1264,27 @@ class _ProxySession {
     _chunkAccessOrder.add(chunkIndex);
   }
 
+  bool _isChunkInsideCacheWindow(int chunkIndex) {
+    final length = _contentLength;
+    if (length == null || length <= 0) return false;
+    final chunkStart = chunkIndex * chunkSize;
+    if (chunkStart >= length) return false;
+    final chunkEnd = min(length - 1, chunkStart + chunkSize - 1);
+    return chunkEnd >= _cacheWindowStart && chunkStart <= _cacheWindowEnd;
+  }
+
   void _evictChunksIfNeeded() {
-    while (_downloadedChunks.length > _maxChunks) {
-      if (_chunkAccessOrder.isEmpty) break;
-      final oldest = _chunkAccessOrder.first;
-      _downloadedChunks.remove(oldest);
-      _chunkBuffer.remove(oldest);
-      _chunkAccessOrder.remove(oldest);
+    final startChunk = _cacheWindowStart ~/ chunkSize;
+    final endChunk = _cacheWindowEnd ~/ chunkSize;
+    final stale = _downloadedChunks
+        .where((idx) {
+          return idx < startChunk || idx > endChunk;
+        })
+        .toList(growable: false);
+    for (final idx in stale) {
+      _downloadedChunks.remove(idx);
+      _chunkBuffer.remove(idx);
+      _chunkAccessOrder.remove(idx);
     }
   }
 
@@ -1135,9 +1383,13 @@ class _ProxySession {
         'lastAccessAt': _lastAccessAt.toIso8601String(),
         'contentLength': _contentLength,
         'downloadedChunks': (_downloadedChunks.toList()..sort()),
+        'cachedRanges': _buildCachedRanges(),
         'downloadedChunkCount': _downloadedChunks.length,
         'degradeReason': _degradeReason,
         'lastPlaybackPosition': _playbackOffset,
+        'cacheWindowAnchor': _cacheWindowAnchor,
+        'cacheWindowStart': _cacheWindowStart,
+        'cacheWindowEnd': _cacheWindowEnd,
       };
       await _metaFile.writeAsString(jsonEncode(payload));
     } catch (_) {
@@ -1153,15 +1405,40 @@ class _ProxySession {
     });
   }
 
+  List<Map<String, int>> _buildCachedRanges() {
+    final length = _contentLength;
+    if (length == null || length <= 0 || _downloadedChunks.isEmpty) {
+      return const <Map<String, int>>[];
+    }
+    final sorted = _downloadedChunks.toList()..sort();
+    final out = <Map<String, int>>[];
+    var runStart = sorted.first;
+    var prev = sorted.first;
+    for (final idx in sorted.skip(1)) {
+      if (idx == prev + 1) {
+        prev = idx;
+        continue;
+      }
+      final startByte = runStart * chunkSize;
+      final endByte = min(length - 1, (prev + 1) * chunkSize - 1);
+      out.add(<String, int>{'start': startByte, 'end': endByte});
+      runStart = idx;
+      prev = idx;
+    }
+    final startByte = runStart * chunkSize;
+    final endByte = min(length - 1, (prev + 1) * chunkSize - 1);
+    out.add(<String, int>{'start': startByte, 'end': endByte});
+    return out;
+  }
+
   /// Marks all in-flight chunks outside the new prefetch window as aborted.
   /// Aborted tasks check [_abortedChunks] at key points and exit early,
   /// releasing their semaphore slot immediately.
-  void _abortOutOfWindowChunks(int newStart) {
+  void _abortOutOfWindowChunks() {
     final length = _contentLength;
     if (length == null || length <= 0) return;
-    final windowStartChunk = max(0, newStart - behindWindowBytes) ~/ chunkSize;
-    final windowEndChunk =
-        min(length - 1, newStart + aheadWindowBytes) ~/ chunkSize;
+    final windowStartChunk = _cacheWindowStart ~/ chunkSize;
+    final windowEndChunk = _cacheWindowEnd ~/ chunkSize;
     // Clear stale abort markers so previously-aborted chunks that fall back
     // inside the new window are not permanently blacklisted.
     _abortedChunks.clear();
@@ -1179,6 +1456,7 @@ class _ProxySession {
     final length = _contentLength;
     if (length == null || length <= 0) return;
     if (chunkIndex < 0 || chunkIndex * chunkSize >= length) return;
+    if (!_isChunkInsideCacheWindow(chunkIndex)) return;
     if (_downloadedChunks.contains(chunkIndex)) return;
     if (_inFlight.containsKey(chunkIndex)) return;
 
@@ -1191,6 +1469,10 @@ class _ProxySession {
       try {
         // Checkpoint 1: abort before doing any work (seek cleared this slot).
         if (_abortedChunks.contains(chunkIndex)) {
+          completer.complete(false);
+          return;
+        }
+        if (!_isChunkInsideCacheWindow(chunkIndex)) {
           completer.complete(false);
           return;
         }
@@ -1208,6 +1490,10 @@ class _ProxySession {
           completer.complete(false);
           return;
         }
+        if (!_isChunkInsideCacheWindow(chunkIndex)) {
+          completer.complete(false);
+          return;
+        }
         if (data == null || _mode != ProxyMode.parallel) {
           completer.complete(false);
           return;
@@ -1222,7 +1508,11 @@ class _ProxySession {
         // Persist to disk asynchronously — does not block serve.
         final persistFuture = _persistChunk(chunkIndex, data);
         _pendingPersists.add(persistFuture);
-        unawaited(persistFuture.whenComplete(() => _pendingPersists.remove(persistFuture)));
+        unawaited(
+          persistFuture.whenComplete(
+            () => _pendingPersists.remove(persistFuture),
+          ),
+        );
       } catch (e, st) {
         if (!_isDisposing && !_isDisposed && !_isClientClosedError(e)) {
           logger('chunk task failed: chunk=$chunkIndex, e=$e\n$st');
@@ -1444,7 +1734,6 @@ class _ProxySession {
     if (error is! StateError) return false;
     return error.message.toString().contains('Client is closed');
   }
-
 }
 
 class _RangeProbeResult {

@@ -115,6 +115,7 @@ class _PlayerPageState extends State<PlayerPage> {
       });
     });
   }
+
   /// Waits for media_kit to report a non-zero duration, up to [timeout].
   /// Returns Duration.zero on timeout.
   Future<Duration> _waitForDuration({
@@ -137,7 +138,6 @@ class _PlayerPageState extends State<PlayerPage> {
     return completer.future;
   }
 
-
   String _formatBitsPerSecond(double bps) {
     if (bps >= 1000 * 1000) {
       return '${(bps / 1000 / 1000).toStringAsFixed(2)} Mbps';
@@ -146,6 +146,11 @@ class _PlayerPageState extends State<PlayerPage> {
       return '${(bps / 1000).toStringAsFixed(1)} Kbps';
     }
     return '${bps.toStringAsFixed(0)} bps';
+  }
+
+  String _networkStatsText() {
+    return '网速: $_networkSpeedLabel  ·  $_bufferAheadLabel'
+        '${_proxyModeLabel.isEmpty ? '' : '  ·  $_proxyModeLabel'}';
   }
 
   Future<void> _prepareAndPlayFromShare(SharePlayRequest request) async {
@@ -465,8 +470,7 @@ class _PlayerPageState extends State<PlayerPage> {
       _proxySessionId = currentSessionId;
       // For URLs that bypass the proxy (m3u8, non-mp4), pass auth headers
       // directly to media_kit so it can authenticate with the CDN.
-      final playHeaders =
-          currentSessionId == null ? media.headers : null;
+      final playHeaders = currentSessionId == null ? media.headers : null;
       await _playerController.open(endpoint.playbackUrl, headers: playHeaders);
       // Seek to restored playback position if available.
       final restoredBytes = currentSessionId != null
@@ -602,28 +606,6 @@ class _PlayerPageState extends State<PlayerPage> {
           ),
         ),
       const Spacer(),
-      Container(
-        margin: const EdgeInsets.only(top: 16, right: 16),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: const Color(0xFF1A2332).withValues(alpha: 0.85),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: _isBufferingNow
-                ? const Color(0xFFF47B25)
-                : const Color(0xFF2E3B56),
-          ),
-        ),
-        child: Text(
-          '网速: $_networkSpeedLabel  ·  $_bufferAheadLabel'
-          '${_proxyModeLabel.isEmpty ? '' : '  ·  $_proxyModeLabel'}',
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 12,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-      ),
     ];
   }
 
@@ -773,16 +755,36 @@ class _PlayerPageState extends State<PlayerPage> {
               ],
             ),
             clipBehavior: Clip.antiAlias,
-            child: MaterialDesktopVideoControlsTheme(
-              normal: MaterialDesktopVideoControlsThemeData(
-                topButtonBar: _buildTopButtonBar(),
-                bottomButtonBar: _buildBottomButtonBar(),
-              ),
-              fullscreen: MaterialDesktopVideoControlsThemeData(
-                topButtonBar: _buildTopButtonBar(),
-                bottomButtonBar: _buildBottomButtonBar(),
-              ),
-              child: Video(controller: _videoController),
+            child: Stack(
+              children: [
+                MaterialDesktopVideoControlsTheme(
+                  normal: MaterialDesktopVideoControlsThemeData(
+                    topButtonBar: _buildTopButtonBar(),
+                    bottomButtonBar: _buildBottomButtonBar(),
+                  ),
+                  fullscreen: MaterialDesktopVideoControlsThemeData(
+                    topButtonBar: _buildTopButtonBar(),
+                    bottomButtonBar: _buildBottomButtonBar(),
+                  ),
+                  child: Video(controller: _videoController),
+                ),
+                if (_isBufferingNow)
+                  Positioned(
+                    top: 16,
+                    right: 16,
+                    child: IgnorePointer(
+                      child: Text(
+                        _networkStatsText(),
+                        style: const TextStyle(
+                          color: Color(0xFFFFB37A),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          shadows: [Shadow(color: Colors.black, blurRadius: 8)],
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
             ),
           ),
         ),
