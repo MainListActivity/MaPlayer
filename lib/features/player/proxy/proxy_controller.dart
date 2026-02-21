@@ -652,11 +652,12 @@ class _ProxySession {
           await _writeLock.acquire();
           try {
             final raf = _writeRaf;
-            if (raf != null) {
-              await raf.setPosition(start);
-              for (final chunk in chunks) {
-                await raf.writeFrom(chunk);
-              }
+            if (raf == null) {
+              return false; // Session already disposed; do not mark chunk as cached.
+            }
+            await raf.setPosition(start);
+            for (final chunk in chunks) {
+              await raf.writeFrom(chunk);
             }
           } finally {
             _writeLock.release();
