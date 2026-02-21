@@ -392,7 +392,7 @@ class _ProxySession {
         cachedContentLength = map['contentLength'] as int?;
         final chunksRaw = map['downloadedChunks'];
         if (chunksRaw is List) {
-          cachedChunks = chunksRaw.cast<int>();
+          cachedChunks = chunksRaw.map((e) => (e as num).toInt()).toList();
         }
       } catch (_) {
         // Corrupt meta — treat as cold start.
