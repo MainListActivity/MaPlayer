@@ -693,6 +693,56 @@ class _ProxySession {
     await request.response.close();
   }
 
+  /// Streams the requested range directly from the upstream source to the
+  /// client, bypassing the chunk cache. Used immediately after a seek so
+  /// media_kit gets data without waiting for background downloads to complete.
+  /// Does not write to the cache to avoid races with parallel prefetch tasks.
+  Future<void> _serveBridge(HttpRequest request, _RequestRange requested) async {
+    if (_isDisposing || _isDisposed) {
+      request.response.statusCode = HttpStatus.gone;
+      await request.response.close();
+      return;
+    }
+    final length = _contentLength!;
+    request.response.statusCode = HttpStatus.partialContent;
+    request.response.headers.set(HttpHeaders.acceptRangesHeader, 'bytes');
+    request.response.headers.set(
+      HttpHeaders.contentTypeHeader,
+      _contentType ?? 'video/mp4',
+    );
+    request.response.headers.set(
+      HttpHeaders.contentLengthHeader,
+      '${requested.end! - requested.start + 1}',
+    );
+    request.response.headers.set(
+      HttpHeaders.contentRangeHeader,
+      'bytes ${requested.start}-${requested.end!}/$length',
+    );
+
+    try {
+      final uri = Uri.parse(sourceUrl);
+      final upstreamRequest = await _client.getUrl(uri);
+      _applyHeaders(upstreamRequest.headers, headers);
+      upstreamRequest.headers.set(
+        HttpHeaders.rangeHeader,
+        'bytes=${requested.start}-${requested.end!}',
+      );
+      _logUpstreamRequestHeaders('serveBridge', upstreamRequest.headers);
+
+      final upstreamResponse = await upstreamRequest.close();
+      await for (final chunk in upstreamResponse) {
+        _recordDownloadedBytes(chunk.length);
+        _recordServedBytes(chunk.length);
+        request.response.add(chunk);
+      }
+    } catch (e) {
+      if (!_isDisposing && !_isDisposed && !_isClientClosedError(e)) {
+        logger('session=$sessionId bridge failed: $e');
+      }
+    }
+    await request.response.close();
+  }
+
   Future<void> _serveHead(HttpRequest request, _RequestRange? range) async {
     final length = _contentLength;
     final contentType = _contentType ?? 'video/mp4';
