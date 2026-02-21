@@ -434,6 +434,7 @@ class _ProxySession {
 
   late final File _cacheFile;
   late final File _metaFile;
+  late final int _maxChunks;
   RandomAccessFile? _writeRaf;
 
   Timer? _statsTimer;
@@ -446,7 +447,6 @@ class _ProxySession {
   String? _degradeReason;
   int? _contentLength;
 
-  late final int _maxChunks;
   int _activeWorkers = 0;
   int _playbackOffset = 0;
   static const int _seekThresholdBytes = 4 * 1024 * 1024; // 4 MB
@@ -475,7 +475,7 @@ class _ProxySession {
   );
 
   Future<void> initialize() async {
-    _maxChunks = (maxCacheBytes / chunkSize).floor().clamp(16, 1024);
+    _maxChunks = (maxCacheBytes ~/ chunkSize).clamp(16, 1024);
     _cacheFile = File('${cacheRoot.path}/$sessionId.bin');
     _metaFile = File('${cacheRoot.path}/$sessionId.json');
 
