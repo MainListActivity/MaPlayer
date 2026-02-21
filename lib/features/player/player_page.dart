@@ -49,6 +49,7 @@ class _PlayerPageState extends State<PlayerPage> {
   QuarkPlayableVariant? _currentCloudVariant;
 
   StreamSubscription<bool>? _bufferingSub;
+  StreamSubscription<bool>? _completedSub;
   StreamSubscription<ProxyAggregateStats>? _proxyStatsSub;
   String? _proxySessionId;
   bool _isBufferingNow = false;
@@ -78,6 +79,7 @@ class _PlayerPageState extends State<PlayerPage> {
   @override
   void dispose() {
     _bufferingSub?.cancel();
+    _completedSub?.cancel();
     _proxyStatsSub?.cancel();
     final sessionId = _proxySessionId;
     if (sessionId != null) {
@@ -95,6 +97,12 @@ class _PlayerPageState extends State<PlayerPage> {
       setState(() {
         _isBufferingNow = value;
       });
+    });
+    _completedSub = player.stream.completed.listen((value) {
+      if (!mounted) return;
+      if (value) {
+        _playNextEpisode();
+      }
     });
   }
 
@@ -169,11 +177,15 @@ class _PlayerPageState extends State<PlayerPage> {
 
       // Sort episodes: Season first, then Episode
       parsed.sort((a, b) {
-        if (a.season != b.season) {
-          return (a.season ?? 0).compareTo(b.season ?? 0);
+        final seasonA = a.season ?? -1;
+        final seasonB = b.season ?? -1;
+        if (seasonA != seasonB) {
+          return seasonA.compareTo(seasonB);
         }
-        if (a.episode != b.episode) {
-          return (a.episode ?? 0).compareTo(b.episode ?? 0);
+        final epA = a.episode ?? -1;
+        final epB = b.episode ?? -1;
+        if (epA != epB) {
+          return epA.compareTo(epB);
         }
         return a.name.compareTo(b.name);
       });
@@ -248,6 +260,62 @@ class _PlayerPageState extends State<PlayerPage> {
         _isLoading = false;
       });
     }
+  }
+
+  void _playNextEpisode() {
+    final prepared = _preparedSelection;
+    if (prepared == null || _currentGroupKey == null) return;
+
+    final currentIndex = _groupKeys.indexOf(_currentGroupKey!);
+    if (currentIndex >= 0 && currentIndex + 1 < _groupKeys.length) {
+      final nextKey = _groupKeys[currentIndex + 1];
+      final nextEpisodes = _groupedEpisodes[nextKey];
+      if (nextEpisodes != null && nextEpisodes.isNotEmpty) {
+        final currentRes = _currentPlayingEpisode?.resolution;
+        ParsedMediaInfo? toPlay = nextEpisodes.first;
+        if (currentRes != null) {
+          final matched = nextEpisodes
+              .where((e) => e.resolution == currentRes)
+              .firstOrNull;
+          if (matched != null) toPlay = matched;
+        }
+        _playParsedEpisode(prepared, toPlay);
+      }
+    }
+  }
+
+  void _playPreviousEpisode() {
+    final prepared = _preparedSelection;
+    if (prepared == null || _currentGroupKey == null) return;
+
+    final currentIndex = _groupKeys.indexOf(_currentGroupKey!);
+    if (currentIndex > 0) {
+      final prevKey = _groupKeys[currentIndex - 1];
+      final prevEpisodes = _groupedEpisodes[prevKey];
+      if (prevEpisodes != null && prevEpisodes.isNotEmpty) {
+        final currentRes = _currentPlayingEpisode?.resolution;
+        ParsedMediaInfo? toPlay = prevEpisodes.first;
+        if (currentRes != null) {
+          final matched = prevEpisodes
+              .where((e) => e.resolution == currentRes)
+              .firstOrNull;
+          if (matched != null) toPlay = matched;
+        }
+        _playParsedEpisode(prepared, toPlay);
+      }
+    }
+  }
+
+  bool _hasNextEpisode() {
+    if (_preparedSelection == null || _currentGroupKey == null) return false;
+    final currentIndex = _groupKeys.indexOf(_currentGroupKey!);
+    return currentIndex >= 0 && currentIndex + 1 < _groupKeys.length;
+  }
+
+  bool _hasPreviousEpisode() {
+    if (_preparedSelection == null || _currentGroupKey == null) return false;
+    final currentIndex = _groupKeys.indexOf(_currentGroupKey!);
+    return currentIndex > 0;
   }
 
   void _showResolutionPicker() {
@@ -610,10 +678,21 @@ class _PlayerPageState extends State<PlayerPage> {
   }
 
   List<Widget> _buildBottomButtonBar() {
+    final hasPrev = _hasPreviousEpisode();
+    final hasNext = _hasNextEpisode();
+
     return [
-      const MaterialDesktopSkipPreviousButton(),
+      if (hasPrev)
+        MaterialDesktopCustomButton(
+          onPressed: _playPreviousEpisode,
+          icon: const Icon(Icons.skip_previous),
+        ),
       const MaterialDesktopPlayOrPauseButton(),
-      const MaterialDesktopSkipNextButton(),
+      if (hasNext)
+        MaterialDesktopCustomButton(
+          onPressed: _playNextEpisode,
+          icon: const Icon(Icons.skip_next),
+        ),
       const VerticalVolumeButton(iconSize: 24),
       MaterialDesktopCustomButton(
         onPressed: _showEpisodesDialog,

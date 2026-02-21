@@ -45,7 +45,24 @@ class ParsedMediaInfo {
   }
 
   String get groupKey {
-    return '$season-$episode';
+    if (season != null && episode != null) {
+      return '$season-$episode';
+    } else if (episode != null) {
+      return 'null-$episode';
+    } else {
+      var baseName = name;
+      final tagsToRemove = [
+        resolution,
+        framerate,
+        hdrFormat,
+        codec,
+        audioCodec,
+      ].whereType<String>();
+      for (final tag in tagsToRemove) {
+        baseName = baseName.replaceAll(RegExp(tag, caseSensitive: false), '');
+      }
+      return baseName.trim();
+    }
   }
 }
 
@@ -94,6 +111,15 @@ class MediaFileParser {
           // Careful with years, e.g. .2024., so check length
           if (fbMatch.group(1)!.length < 4) {
             episode = int.tryParse(fbMatch.group(1)!);
+          }
+        } else {
+          // Chinese parts: 上/中/下
+          final zhMatch = RegExp(r'(?:剧场版)?[\s_-]*([上中下])').firstMatch(name);
+          if (zhMatch != null) {
+            final val = zhMatch.group(1)!;
+            if (val == '上') episode = 1;
+            if (val == '中') episode = 2;
+            if (val == '下') episode = 3;
           }
         }
       }
