@@ -975,6 +975,11 @@ class _ProxySession {
     final length = _contentLength;
     if (length == null) return;
     final start = chunkIndex * chunkSize;
+    // Skip write if this chunk was aborted during a seek.
+    if (_abortedChunks.contains(chunkIndex)) {
+      _chunkBuffer.remove(chunkIndex);
+      return;
+    }
     await _writeLock.acquire();
     try {
       final raf = _writeRaf;
@@ -1053,6 +1058,11 @@ class _ProxySession {
       await _semaphore.acquire();
       _activeWorkers += 1;
       try {
+        // Checkpoint 1: abort before doing any work (seek cleared this slot).
+        if (_abortedChunks.contains(chunkIndex)) {
+          completer.complete(false);
+          return;
+        }
         if (_downloadedChunks.contains(chunkIndex)) {
           completer.complete(true);
           return;
@@ -1062,6 +1072,11 @@ class _ProxySession {
           return;
         }
         final data = await _downloadChunk(chunkIndex);
+        // Checkpoint 2: abort after download completes (seek happened mid-download).
+        if (_abortedChunks.contains(chunkIndex)) {
+          completer.complete(false);
+          return;
+        }
         if (data == null || _mode != ProxyMode.parallel) {
           completer.complete(false);
           return;
@@ -1083,6 +1098,7 @@ class _ProxySession {
       } finally {
         _activeWorkers = max(0, _activeWorkers - 1);
         _inFlight.remove(chunkIndex);
+        _abortedChunks.remove(chunkIndex); // cleanup
         _semaphore.release();
       }
     }());
