@@ -381,14 +381,66 @@ class _ProxySession {
   Future<void> initialize() async {
     _cacheFile = File('${cacheRoot.path}/$sessionId.bin');
     _metaFile = File('${cacheRoot.path}/$sessionId.json');
-    if (!await _cacheFile.exists()) {
-      await _cacheFile.create(recursive: true);
-    }
-    _writeRaf = await _cacheFile.open(mode: FileMode.write);
 
+    // --- Read cached meta (best effort) ---
+    int? cachedContentLength;
+    List<int> cachedChunks = const [];
+    if (await _metaFile.exists()) {
+      try {
+        final raw = await _metaFile.readAsString();
+        final map = jsonDecode(raw) as Map<String, dynamic>;
+        cachedContentLength = map['contentLength'] as int?;
+        final chunksRaw = map['downloadedChunks'];
+        if (chunksRaw is List) {
+          cachedChunks = chunksRaw.cast<int>();
+        }
+      } catch (_) {
+        // Corrupt meta — treat as cold start.
+        cachedContentLength = null;
+        cachedChunks = const [];
+      }
+    }
+
+    // --- Probe remote ---
     final probe = await _probeRangeSupport();
     _contentLength = probe.contentLength;
     _contentType = probe.contentType;
+
+    // --- Warm-cache: validate and restore ---
+    final canWarm = cachedContentLength != null &&
+        _contentLength != null &&
+        cachedContentLength == _contentLength &&
+        cachedChunks.isNotEmpty &&
+        await _cacheFile.exists();
+
+    if (canWarm) {
+      // Open in append mode — does NOT truncate existing data.
+      _writeRaf = await _cacheFile.open(mode: FileMode.writeOnlyAppend);
+      _downloadedChunks.addAll(cachedChunks);
+      logger(
+        'session=$sessionId warm-cache restored '
+        '${cachedChunks.length} chunks (contentLength=$_contentLength)',
+      );
+    } else {
+      // Invalidate stale cache files if they exist.
+      if (await _cacheFile.exists()) {
+        try { await _cacheFile.delete(); } catch (_) {}
+      }
+      if (await _metaFile.exists()) {
+        try { await _metaFile.delete(); } catch (_) {}
+      }
+      await _cacheFile.create(recursive: true);
+      _writeRaf = await _cacheFile.open(mode: FileMode.write);
+      if (cachedContentLength != null &&
+          _contentLength != null &&
+          cachedContentLength != _contentLength) {
+        logger(
+          'session=$sessionId cache invalidated: '
+          'cachedLength=$cachedContentLength remoteLength=$_contentLength',
+        );
+      }
+    }
+
     if (!probe.supportsRange ||
         _contentLength == null ||
         _contentLength! <= 0) {
