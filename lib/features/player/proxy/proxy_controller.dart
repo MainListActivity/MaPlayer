@@ -826,20 +826,19 @@ class _ProxySession {
     }
     _playbackOffset = requested.start;
 
-    // Start background prefetch for the new window (non-blocking).
-    final startupEnd = min(
-      requested.end!,
-      requested.start + max(chunkSize, 512 * 1024).toInt() - 1,
-    );
-    _ensureRangeAvailableBackground(requested.start);
-
     if (isSeek) {
       // Bridge: stream directly from upstream so media_kit gets data
       // immediately without waiting for background chunks to arrive.
+      // Kick off background prefetch while the bridge serves the response.
+      _ensureRangeAvailableBackground(requested.start);
       await _serveBridge(request, requested);
       return;
     }
 
+    final startupEnd = min(
+      requested.end!,
+      requested.start + max(chunkSize, 512 * 1024).toInt() - 1,
+    );
     await _ensureRangeAvailable(requested.start, startupEnd);
     if (_mode == ProxyMode.single) {
       await _serveSingle(request, requested);
