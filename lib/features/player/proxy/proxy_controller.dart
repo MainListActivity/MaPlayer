@@ -892,13 +892,13 @@ class _ProxySession {
       final end = requested.end!;
       while (offset <= end) {
         final chunkIndex = offset ~/ chunkSize;
-        _touchChunk(chunkIndex);
         final chunkReady = await _ensureChunkReady(chunkIndex);
         if (!chunkReady || _mode == ProxyMode.single) {
           _degradeToSingle('chunk $chunkIndex not ready during serve');
           degraded = true;
           break;
         }
+        _touchChunk(chunkIndex);
         final remaining = end - offset + 1;
         final readLen = min(remaining, 64 * 1024);
 
