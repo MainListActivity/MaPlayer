@@ -511,6 +511,7 @@ class _ProxySession {
         // Corrupt meta — treat as cold start.
         cachedContentLength = null;
         cachedChunks = const [];
+        cachedPosition = null;
       }
     }
 

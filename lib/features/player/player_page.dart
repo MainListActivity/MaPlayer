@@ -476,6 +476,7 @@ class _PlayerPageState extends State<PlayerPage> {
         final contentLength = endpoint.proxySession?.contentLength;
         if (contentLength != null && contentLength > 0) {
           final duration = await _waitForDuration();
+          if (!mounted) return;
           if (duration > Duration.zero) {
             final seekFraction = restoredBytes / contentLength;
             final seekTo = duration * seekFraction;
