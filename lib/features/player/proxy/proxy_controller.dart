@@ -429,6 +429,9 @@ class _ProxySession {
   // Chunks downloaded from network but not yet flushed to disk. Serve reads
   // from here first so it doesn't have to wait for the write lock.
   final Map<int, List<List<int>>> _chunkBuffer = <int, List<List<int>>>{};
+  // LRU tracking: key = chunk index, value = last-access epoch-ms.
+  // LinkedHashMap preserves insertion order → head = oldest entry.
+  final LinkedHashMap<int, int> _chunkAccessOrder = LinkedHashMap();
   // Tracks in-progress disk write futures so dispose can await them.
   final Set<Future<void>> _pendingPersists = <Future<void>>{};
 
@@ -1001,6 +1004,20 @@ class _ProxySession {
       }
     }
     return count;
+  }
+
+  void _touchChunk(int chunkIndex) {
+    _chunkAccessOrder.remove(chunkIndex);
+    _chunkAccessOrder[chunkIndex] = DateTime.now().millisecondsSinceEpoch;
+  }
+
+  void _evictChunksIfNeeded() {
+    while (_downloadedChunks.length > _maxChunks) {
+      final oldest = _chunkAccessOrder.keys.first;
+      _downloadedChunks.remove(oldest);
+      _chunkBuffer.remove(oldest);
+      _chunkAccessOrder.remove(oldest);
+    }
   }
 
   /// Downloads a chunk from the network and returns the received data.
