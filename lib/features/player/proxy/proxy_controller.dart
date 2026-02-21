@@ -46,7 +46,13 @@ class ProxyController {
         playbackUrl: media.url,
       );
     }
-    if (!_isMp4Like(media.url)) {
+    // Route through the proxy when fileKey is provided (identified cloud file)
+    // or when the URL looks like an mp4. Plain API endpoint URLs without a
+    // file extension (e.g. Quark raw-download URLs) are caught by the fileKey
+    // branch so they are proxied rather than streamed directly to media_kit.
+    final shouldProxy =
+        (fileKey != null && fileKey.isNotEmpty) || _isMp4Like(media.url);
+    if (!shouldProxy) {
       return ResolvedPlaybackEndpoint(
         originalMedia: media,
         playbackUrl: media.url,
