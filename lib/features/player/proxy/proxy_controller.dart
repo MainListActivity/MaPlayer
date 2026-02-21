@@ -125,6 +125,11 @@ class ProxyController {
     return session.statsStream;
   }
 
+  /// Returns the byte offset of the last known playback position for
+  /// [sessionId], or null if no position has been saved.
+  int? getRestoredPosition(String sessionId) =>
+      _sessions[sessionId]?.restoredPlaybackPosition;
+
   Stream<ProxyAggregateStats> watchAggregateStats() {
     _ensureAggregateTicker();
     _emitAggregateSnapshot();
@@ -451,6 +456,7 @@ class _ProxySession {
 
   int _activeWorkers = 0;
   int _playbackOffset = 0;
+  int? _restoredPlaybackPosition;
   static const int _seekThresholdBytes = 4 * 1024 * 1024; // 4 MB
   final Set<int> _abortedChunks = <int>{};
 
@@ -476,6 +482,8 @@ class _ProxySession {
     createdAt: createdAt,
   );
 
+  int? get restoredPlaybackPosition => _restoredPlaybackPosition;
+
   Future<void> initialize() async {
     _maxChunks = (maxCacheBytes ~/ chunkSize).clamp(16, 1024);
     _cacheFile = File('${cacheRoot.path}/$sessionId.bin');
@@ -492,6 +500,10 @@ class _ProxySession {
         final chunksRaw = map['downloadedChunks'];
         if (chunksRaw is List) {
           cachedChunks = chunksRaw.map((e) => (e as num).toInt()).toList();
+        }
+        final rawPos = map['lastPlaybackPosition'];
+        if (rawPos is int) {
+          _restoredPlaybackPosition = rawPos;
         }
       } catch (_) {
         // Corrupt meta — treat as cold start.
@@ -1121,6 +1133,7 @@ class _ProxySession {
         'downloadedChunks': (_downloadedChunks.toList()..sort()),
         'downloadedChunkCount': _downloadedChunks.length,
         'degradeReason': _degradeReason,
+        'lastPlaybackPosition': _playbackOffset,
       };
       await _metaFile.writeAsString(jsonEncode(payload));
     } catch (_) {
