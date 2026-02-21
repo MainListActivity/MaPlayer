@@ -480,6 +480,7 @@ class _ProxySession {
     headers: headers,
     mode: _mode,
     createdAt: createdAt,
+    contentLength: _contentLength,
   );
 
   int? get restoredPlaybackPosition => _restoredPlaybackPosition;

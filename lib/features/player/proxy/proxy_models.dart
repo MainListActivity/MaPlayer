@@ -7,6 +7,7 @@ class ProxySessionDescriptor {
     required this.headers,
     required this.mode,
     required this.createdAt,
+    this.contentLength,
   });
 
   final String sessionId;
@@ -14,6 +15,7 @@ class ProxySessionDescriptor {
   final Map<String, String> headers;
   final ProxyMode mode;
   final DateTime createdAt;
+  final int? contentLength;
 }
 
 class ProxyStatsSnapshot {
