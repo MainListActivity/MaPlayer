@@ -1,7 +1,14 @@
 import 'package:media_kit/media_kit.dart';
 
 class MediaKitPlayerController {
-  MediaKitPlayerController() : player = Player();
+  MediaKitPlayerController()
+    : player = Player(
+        configuration: const PlayerConfiguration(
+          // Increase demuxer cache for large raw files to reduce stutter under
+          // short-term network jitter.
+          bufferSize: 256 * 1024 * 1024,
+        ),
+      );
 
   final Player player;
 

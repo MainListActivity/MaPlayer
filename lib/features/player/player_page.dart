@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -5,6 +6,7 @@ import 'package:ma_palyer/app/app_route.dart';
 import 'package:ma_palyer/features/cloud/quark/quark_models.dart';
 import 'package:ma_palyer/features/playback/playback_models.dart';
 import 'package:ma_palyer/features/player/media_kit_player_controller.dart';
+import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
 import 'package:ma_palyer/features/playback/share_play_orchestrator.dart';
@@ -45,12 +47,26 @@ class _PlayerPageState extends State<PlayerPage> {
   PlayableMedia? _currentMedia;
   QuarkPlayableVariant? _currentCloudVariant;
 
+  StreamSubscription<Duration>? _durationSub;
+  StreamSubscription<Track>? _trackSub;
+  StreamSubscription<bool>? _bufferingSub;
+  Timer? _networkStatsTimer;
+  Duration _lastPositionSample = Duration.zero;
+  Duration _lastBufferSample = Duration.zero;
+  DateTime? _lastSampleAt;
+  Duration _mediaDuration = Duration.zero;
+  int? _videoTrackBitrate;
+  bool _isBufferingNow = false;
+  String _networkSpeedLabel = '--';
+  String _bufferAheadLabel = '缓冲: --';
+
   @override
   void initState() {
     super.initState();
     _playerController = MediaKitPlayerController();
     _videoController = VideoController(_playerController.player);
     _orchestrator = SharePlayOrchestrator();
+    _bindNetworkStatsStreams();
 
     final args = widget.args;
     if (args != null) {
@@ -64,8 +80,109 @@ class _PlayerPageState extends State<PlayerPage> {
 
   @override
   void dispose() {
+    _durationSub?.cancel();
+    _trackSub?.cancel();
+    _bufferingSub?.cancel();
+    _networkStatsTimer?.cancel();
     _playerController.dispose();
     super.dispose();
+  }
+
+  void _bindNetworkStatsStreams() {
+    final player = _playerController.player;
+    _durationSub = player.stream.duration.listen((value) {
+      _mediaDuration = value;
+    });
+    _trackSub = player.stream.track.listen((value) {
+      _videoTrackBitrate = value.video.bitrate;
+    });
+    _bufferingSub = player.stream.buffering.listen((value) {
+      if (!mounted) return;
+      setState(() {
+        _isBufferingNow = value;
+      });
+    });
+    _networkStatsTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      _sampleNetworkSpeed();
+    });
+  }
+
+  void _sampleNetworkSpeed() {
+    final player = _playerController.player;
+    final now = DateTime.now();
+    final position = player.state.position;
+    final buffer = player.state.buffer;
+    final ahead = buffer > position ? (buffer - position) : Duration.zero;
+    final bitrateBps = _estimateMediaBitrateBps();
+
+    if (_lastSampleAt == null) {
+      _lastSampleAt = now;
+      _lastPositionSample = position;
+      _lastBufferSample = buffer;
+      if (!mounted) return;
+      setState(() {
+        _networkSpeedLabel = '--';
+        _bufferAheadLabel = '缓冲: ${_formatDurationShort(ahead)}';
+      });
+      return;
+    }
+
+    final deltaTimeMs = now.difference(_lastSampleAt!).inMilliseconds;
+    if (deltaTimeMs <= 0) return;
+
+    final deltaSec = deltaTimeMs / 1000.0;
+    final lastAhead = _lastBufferSample > _lastPositionSample
+        ? (_lastBufferSample - _lastPositionSample)
+        : Duration.zero;
+    final deltaAheadSec = (ahead.inMilliseconds - lastAhead.inMilliseconds) /
+        1000.0;
+
+    // Estimated network throughput using:
+    // throughput ~= media_bitrate * (1 + d(buffer_ahead)/dt)
+    final estimatedBps = bitrateBps != null
+        ? (bitrateBps * (1 + (deltaAheadSec / deltaSec))).clamp(0.0, 5e9)
+        : null;
+
+    _lastSampleAt = now;
+    _lastPositionSample = position;
+    _lastBufferSample = buffer;
+
+    if (!mounted) return;
+    setState(() {
+      _networkSpeedLabel =
+          estimatedBps == null ? '--' : _formatBitsPerSecond(estimatedBps);
+      _bufferAheadLabel = '缓冲: ${_formatDurationShort(ahead)}';
+    });
+  }
+
+  double? _estimateMediaBitrateBps() {
+    final sizeBytes = _currentCloudVariant?.sizeBytes;
+    if (sizeBytes != null && sizeBytes > 0 && _mediaDuration > Duration.zero) {
+      final durationSec = _mediaDuration.inMilliseconds / 1000.0;
+      if (durationSec > 0) {
+        return (sizeBytes * 8) / durationSec;
+      }
+    }
+    final videoBps = _videoTrackBitrate;
+    if (videoBps != null && videoBps > 0) {
+      return videoBps.toDouble();
+    }
+    return null;
+  }
+
+  String _formatBitsPerSecond(double bps) {
+    if (bps >= 1000 * 1000) {
+      return '${(bps / 1000 / 1000).toStringAsFixed(2)} Mbps';
+    }
+    if (bps >= 1000) {
+      return '${(bps / 1000).toStringAsFixed(1)} Kbps';
+    }
+    return '${bps.toStringAsFixed(0)} bps';
+  }
+
+  String _formatDurationShort(Duration value) {
+    final sec = value.inMilliseconds / 1000.0;
+    return '${sec.toStringAsFixed(1)}s';
   }
 
   Future<void> _prepareAndPlayFromShare(SharePlayRequest request) async {
@@ -467,6 +584,27 @@ class _PlayerPageState extends State<PlayerPage> {
           ),
         ),
       const Spacer(),
+      Container(
+        margin: const EdgeInsets.only(top: 16, right: 16),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1A2332).withValues(alpha: 0.85),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: _isBufferingNow
+                ? const Color(0xFFF47B25)
+                : const Color(0xFF2E3B56),
+          ),
+        ),
+        child: Text(
+          '网速: $_networkSpeedLabel  ·  $_bufferAheadLabel',
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 12,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ),
     ];
   }
 
