@@ -445,6 +445,8 @@ class _ProxySession {
 
   int _activeWorkers = 0;
   int _playbackOffset = 0;
+  static const int _seekThresholdBytes = 4 * 1024 * 1024; // 4 MB
+  final Set<int> _abortedChunks = <int>{};
 
   int _downloadBytesTotal = 0;
   int _serveBytesTotal = 0;
@@ -1013,6 +1015,22 @@ class _ProxySession {
     _metaDebounceTimer = Timer(const Duration(seconds: 5), () {
       unawaited(_writeMeta());
     });
+  }
+
+  /// Marks all in-flight chunks outside the new prefetch window as aborted.
+  /// Aborted tasks check [_abortedChunks] at key points and exit early,
+  /// releasing their semaphore slot immediately.
+  void _abortOutOfWindowChunks(int newStart) {
+    final length = _contentLength;
+    if (length == null || length <= 0) return;
+    final windowStartChunk = max(0, newStart - behindWindowBytes) ~/ chunkSize;
+    final windowEndChunk =
+        min(length - 1, newStart + aheadWindowBytes) ~/ chunkSize;
+    for (final idx in _inFlight.keys.toList()) {
+      if (idx < windowStartChunk || idx > windowEndChunk) {
+        _abortedChunks.add(idx);
+      }
+    }
   }
 
   /// Starts a chunk download in the background. Does not wait for completion.
