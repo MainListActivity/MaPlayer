@@ -1,5 +1,10 @@
 import 'package:flutter/material.dart';
 
+final class AppRouteObserver extends RouteObserver<ModalRoute<void>> {
+  AppRouteObserver._();
+  static final AppRouteObserver instance = AppRouteObserver._();
+}
+
 enum AppRoute { home, movies, tvShows, settings, player, history, bootstrap }
 
 class AppMenuItem {

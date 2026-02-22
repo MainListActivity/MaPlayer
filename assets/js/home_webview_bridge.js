@@ -495,7 +495,7 @@
     const root = document.documentElement;
     const body = document.body;
     //移除遮罩 id="image-overlay-container"
-    const overlay = root.getElementById('image-overlay-container');
+    const overlay = document.getElementById('image-overlay-container');
     if (overlay) {
       overlay.remove();
     }

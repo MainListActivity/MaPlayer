@@ -13,7 +13,7 @@ class HistoryPage extends StatefulWidget {
   State<HistoryPage> createState() => _HistoryPageState();
 }
 
-class _HistoryPageState extends State<HistoryPage> {
+class _HistoryPageState extends State<HistoryPage> with RouteAware {
   final _historyRepository = PlayHistoryRepository();
 
   List<PlayHistoryItem> _items = const <PlayHistoryItem>[];
@@ -23,6 +23,26 @@ class _HistoryPageState extends State<HistoryPage> {
   @override
   void initState() {
     super.initState();
+    _loadHistory();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of(context);
+    if (route != null) {
+      AppRouteObserver.instance.subscribe(this, route);
+    }
+  }
+
+  @override
+  void dispose() {
+    AppRouteObserver.instance.unsubscribe(this);
+    super.dispose();
+  }
+
+  @override
+  void didPopNext() {
     _loadHistory();
   }
 

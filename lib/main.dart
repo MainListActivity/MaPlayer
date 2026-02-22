@@ -33,6 +33,7 @@ class MaPlayerApp extends StatelessWidget {
         scaffoldBackgroundColor: const Color(0xFF101622),
         useMaterial3: true,
       ),
+      navigatorObservers: [AppRouteObserver.instance],
       initialRoute: AppRoutes.bootstrap,
       onGenerateRoute: _onGenerateRoute,
     );
