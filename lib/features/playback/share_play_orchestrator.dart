@@ -1,6 +1,7 @@
 import 'package:ma_palyer/features/cloud/quark/quark_auth_service.dart';
 import 'package:ma_palyer/features/cloud/quark/quark_models.dart';
 import 'package:ma_palyer/features/cloud/quark/quark_transfer_service.dart';
+import 'package:ma_palyer/features/history/history_cover_utils.dart';
 import 'package:ma_palyer/features/history/play_history_models.dart';
 import 'package:ma_palyer/features/history/play_history_repository.dart';
 import 'package:ma_palyer/features/playback/playback_models.dart';
@@ -75,7 +76,8 @@ class SharePlayOrchestrator {
     await _authService.ensureValidToken();
 
     final history = await _historyRepository.findByShareUrl(request.shareUrl);
-    final showDirName = _showDirNameFor(request.title, request.shareUrl);
+    final mergedRequest = _mergeRequestWithHistory(request, history);
+    final showDirName = _showDirNameFor(mergedRequest.title, request.shareUrl);
     final cached = history?.cachedEpisodes ?? const <PlayHistoryEpisode>[];
 
     List<QuarkShareFileEntry> shareEpisodes;
@@ -104,12 +106,12 @@ class SharePlayOrchestrator {
     final now = DateTime.now().millisecondsSinceEpoch;
     await _historyRepository.upsertByShareUrl(
       PlayHistoryItem(
-        shareUrl: request.shareUrl,
-        pageUrl: request.pageUrl,
-        title: request.title,
-        coverUrl: request.coverUrl ?? '',
-        coverHeaders: request.coverHeaders ?? const <String, String>{},
-        intro: request.intro ?? '',
+        shareUrl: mergedRequest.shareUrl,
+        pageUrl: mergedRequest.pageUrl,
+        title: mergedRequest.title,
+        coverUrl: mergedRequest.coverUrl ?? '',
+        coverHeaders: mergedRequest.coverHeaders ?? const <String, String>{},
+        intro: mergedRequest.intro ?? '',
         showDirName: showDirName,
         showFolderId: history?.showFolderId,
         lastEpisodeFileId: history?.lastEpisodeFileId,
@@ -140,7 +142,7 @@ class SharePlayOrchestrator {
         .toList();
 
     return PreparedEpisodeSelection(
-      request: request,
+      request: mergedRequest,
       showDirName: showDirName,
       preferredFolderId: history?.showFolderId,
       episodes: episodes,
@@ -200,14 +202,15 @@ class SharePlayOrchestrator {
     final current = await _historyRepository.findByShareUrl(
       prepared.request.shareUrl,
     );
+    final mergedRequest = _mergeRequestWithHistory(prepared.request, current);
     await _historyRepository.upsertByShareUrl(
       PlayHistoryItem(
         shareUrl: prepared.request.shareUrl,
-        pageUrl: prepared.request.pageUrl,
-        title: prepared.request.title,
-        coverUrl: prepared.request.coverUrl ?? '',
-        coverHeaders: prepared.request.coverHeaders ?? const <String, String>{},
-        intro: prepared.request.intro ?? '',
+        pageUrl: mergedRequest.pageUrl,
+        title: mergedRequest.title,
+        coverUrl: mergedRequest.coverUrl ?? '',
+        coverHeaders: mergedRequest.coverHeaders ?? const <String, String>{},
+        intro: mergedRequest.intro ?? '',
         showDirName: prepared.showDirName,
         showFolderId: folder.folderId,
         lastEpisodeFileId: selected.fileId,
@@ -339,6 +342,71 @@ class SharePlayOrchestrator {
     final trimmed = title.trim();
     final seed = trimmed.isNotEmpty ? trimmed : _shareId(shareUrl);
     return seed.replaceAll(RegExp(r'[^\u4e00-\u9fa5a-zA-Z0-9._-]'), '_');
+  }
+
+  SharePlayRequest _mergeRequestWithHistory(
+    SharePlayRequest request,
+    PlayHistoryItem? history,
+  ) {
+    final mergedPageUrl = _preferNonEmpty(
+      request.pageUrl,
+      history?.pageUrl ?? '',
+    );
+    final mergedTitle = _preferNonEmpty(request.title, history?.title ?? '');
+    final mergedIntro = _preferNonEmpty(request.intro, history?.intro ?? '');
+    final mergedCoverUrl = _preferNonEmpty(
+      request.coverUrl,
+      history?.coverUrl ?? '',
+    );
+    final mergedCoverHeaders = _preferHeaders(
+      request.coverHeaders,
+      history?.coverHeaders ?? const <String, String>{},
+    );
+    final normalizedCover = normalizeHistoryCover(
+      coverUrl: mergedCoverUrl,
+      coverHeaders: mergedCoverHeaders,
+    );
+    return SharePlayRequest(
+      shareUrl: request.shareUrl,
+      pageUrl: mergedPageUrl,
+      title: mergedTitle.isEmpty ? request.title : mergedTitle,
+      coverUrl: normalizedCover.coverUrl.isEmpty ? null : normalizedCover.coverUrl,
+      coverHeaders: normalizedCover.coverHeaders.isEmpty
+          ? null
+          : normalizedCover.coverHeaders,
+      intro: mergedIntro.isEmpty ? null : mergedIntro,
+    );
+  }
+
+  String _preferNonEmpty(String? incoming, String fallback) {
+    final next = (incoming ?? '').trim();
+    if (next.isNotEmpty) return next;
+    return fallback.trim();
+  }
+
+  Map<String, String> _preferHeaders(
+    Map<String, String>? incoming,
+    Map<String, String> fallback,
+  ) {
+    final cleanedIncoming = <String, String>{};
+    for (final entry in (incoming ?? const <String, String>{}).entries) {
+      final key = entry.key.trim();
+      final value = entry.value.trim();
+      if (key.isNotEmpty && value.isNotEmpty) {
+        cleanedIncoming[key] = value;
+      }
+    }
+    if (cleanedIncoming.isNotEmpty) return cleanedIncoming;
+
+    final cleanedFallback = <String, String>{};
+    for (final entry in fallback.entries) {
+      final key = entry.key.trim();
+      final value = entry.value.trim();
+      if (key.isNotEmpty && value.isNotEmpty) {
+        cleanedFallback[key] = value;
+      }
+    }
+    return cleanedFallback;
   }
 
   String _shareId(String shareUrl) {

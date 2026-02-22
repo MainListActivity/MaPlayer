@@ -77,7 +77,7 @@ class PlayHistoryItem {
       shareUrl: json['shareUrl']?.toString() ?? '',
       pageUrl: json['pageUrl']?.toString() ?? '',
       title: json['title']?.toString() ?? '',
-      coverUrl: json['coverUrl']?.toString() ?? '',
+      coverUrl: json['coverUrl']?.toString() ?? json['cover']?.toString() ?? '',
       coverHeaders:
           (json['coverHeaders'] as Map?)
               ?.map(
@@ -86,7 +86,7 @@ class PlayHistoryItem {
               )
               .cast<String, String>() ??
           const <String, String>{},
-      intro: json['intro']?.toString() ?? '',
+      intro: json['intro']?.toString() ?? json['description']?.toString() ?? '',
       showDirName: json['showDirName']?.toString() ?? '',
       showFolderId: json['showFolderId']?.toString(),
       lastEpisodeFileId: json['lastEpisodeFileId']?.toString(),

@@ -232,4 +232,72 @@ void main() {
       expect(transfer.lastListedFolderId, 'folder_cached');
     },
   );
+
+  test('prepareEpisodes keeps existing metadata when request is partial', () async {
+    final transfer = _FakeTransferService();
+    final history = _MemoryHistoryRepository();
+    history.map['https://pan.quark.cn/s/abc'] = const PlayHistoryItem(
+      shareUrl: 'https://pan.quark.cn/s/abc',
+      pageUrl: 'https://www.wogg.net/voddetail/1.html',
+      title: '旧标题',
+      coverUrl: 'https://img2.doubanio.com/view/photo/m_ratio_poster/public/p2928387071.jpg',
+      coverHeaders: <String, String>{'Referer': 'https://movie.douban.com/'},
+      intro: '旧简介',
+      showDirName: '旧标题',
+      updatedAtEpochMs: 1,
+    );
+
+    final orchestrator = SharePlayOrchestrator(
+      authService: _FakeAuthService(),
+      transferService: transfer,
+      historyRepository: history,
+    );
+
+    await orchestrator.prepareEpisodes(
+      const SharePlayRequest(
+        shareUrl: 'https://pan.quark.cn/s/abc',
+        pageUrl: '',
+        title: '',
+      ),
+    );
+
+    final saved = await history.findByShareUrl('https://pan.quark.cn/s/abc');
+    expect(saved, isNotNull);
+    expect(saved?.pageUrl, 'https://www.wogg.net/voddetail/1.html');
+    expect(saved?.title, '旧标题');
+    expect(saved?.coverUrl, contains('doubanio.com'));
+    expect(saved?.intro, '旧简介');
+  });
+
+  test('prepareEpisodes normalizes baidu cover redirect and headers', () async {
+    final transfer = _FakeTransferService();
+    final history = _MemoryHistoryRepository();
+    final orchestrator = SharePlayOrchestrator(
+      authService: _FakeAuthService(),
+      transferService: transfer,
+      historyRepository: history,
+    );
+
+    await orchestrator.prepareEpisodes(
+      const SharePlayRequest(
+        shareUrl: 'https://pan.quark.cn/s/abc',
+        pageUrl: 'https://www.wogg.net/voddetail/119576.html',
+        title: '测试剧',
+        coverUrl:
+            'https://image.baidu.com/search/down?url=https://img2.doubanio.com/view/photo/m_ratio_poster/public/p2928387071.jpg',
+        coverHeaders: <String, String>{
+          'Referer': 'https://www.wogg.net/voddetail/119576.html',
+          'Origin': 'https://www.wogg.net',
+        },
+      ),
+    );
+
+    final saved = await history.findByShareUrl('https://pan.quark.cn/s/abc');
+    expect(saved, isNotNull);
+    expect(
+      saved?.coverUrl,
+      'https://img2.doubanio.com/view/photo/m_ratio_poster/public/p2928387071.jpg',
+    );
+    expect(saved?.coverHeaders['Referer'], 'https://movie.douban.com/');
+  });
 }

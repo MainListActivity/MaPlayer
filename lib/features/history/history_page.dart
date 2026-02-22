@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:ma_palyer/app/app_route.dart';
+import 'package:ma_palyer/features/history/history_cover_utils.dart';
 import 'package:ma_palyer/features/history/play_history_models.dart';
 import 'package:ma_palyer/features/history/play_history_repository.dart';
 import 'package:ma_palyer/features/playback/share_play_orchestrator.dart';
@@ -71,12 +72,16 @@ class _HistoryPageState extends State<HistoryPage> {
   }
 
   Future<void> _openRecent(PlayHistoryItem item) async {
+    final normalizedCover = normalizeHistoryCover(
+      coverUrl: item.coverUrl,
+      coverHeaders: item.coverHeaders,
+    );
     await _handlePlayRequest(<String, dynamic>{
       'shareUrl': item.shareUrl,
       'pageUrl': item.pageUrl,
       'title': item.title,
-      'cover': item.coverUrl,
-      'coverHeaders': item.coverHeaders,
+      'cover': normalizedCover.coverUrl,
+      'coverHeaders': normalizedCover.coverHeaders,
       'intro': item.intro,
     });
   }
@@ -146,6 +151,10 @@ class _HistoryPageState extends State<HistoryPage> {
                     itemCount: _items.length,
                     itemBuilder: (context, index) {
                       final item = _items[index];
+                      final normalizedCover = normalizeHistoryCover(
+                        coverUrl: item.coverUrl,
+                        coverHeaders: item.coverHeaders,
+                      );
                       return InkWell(
                         onTap: _isBusy ? null : () => _openRecent(item),
                         borderRadius: BorderRadius.circular(12),
@@ -163,12 +172,14 @@ class _HistoryPageState extends State<HistoryPage> {
                                 aspectRatio: 270 / 405,
                                 child: Container(
                                   color: const Color(0xFF101622),
-                                  child: item.coverUrl.isNotEmpty
+                                  child: normalizedCover.coverUrl.isNotEmpty
                                       ? Image.network(
-                                          item.coverUrl,
-                                          headers: item.coverHeaders.isEmpty
+                                          normalizedCover.coverUrl,
+                                          headers: normalizedCover
+                                                  .coverHeaders
+                                                  .isEmpty
                                               ? null
-                                              : item.coverHeaders,
+                                              : normalizedCover.coverHeaders,
                                           fit: BoxFit.cover,
                                           errorBuilder:
                                               (context, error, stackTrace) =>
