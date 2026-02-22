@@ -162,10 +162,21 @@ class SharePlayOrchestrator {
 
     final folder = await _resolveShowFolder(prepared);
 
-    QuarkFileEntry? selectedSaved = await _findSavedFileByName(
-      rootFolderId: folder.folderId,
-      preferredName: selected.name,
-    );
+    // Only reuse the cached file when the selected episode fid matches the
+    // previously played one.  If the fid differs (user switched episodes) we
+    // must always re-save, even when file names happen to be identical across
+    // episodes (e.g. every episode stored as "001.mp4" in its own sub-folder).
+    final isSameEpisode =
+        prepared.preferredFileId != null &&
+        prepared.preferredFileId == selected.fileId;
+
+    QuarkFileEntry? selectedSaved;
+    if (isSameEpisode) {
+      selectedSaved = await _findSavedFileByName(
+        rootFolderId: folder.folderId,
+        preferredName: selected.name,
+      );
+    }
     if (selectedSaved == null) {
       await _transferService.clearFolder(folder.folderId);
       await _transferService.saveShareEpisodeToFolder(
