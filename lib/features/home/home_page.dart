@@ -33,6 +33,29 @@ class _HomePageState extends State<HomePage> {
     debugPrint('[HomeWebView] $message');
   }
 
+  Object? _toLogValue(Object? value) {
+    if (value == null || value is String || value is num || value is bool) {
+      return value;
+    }
+    if (value is List) {
+      return value.map(_toLogValue).toList();
+    }
+    if (value is Map) {
+      return value.map(
+        (key, nested) => MapEntry(key.toString(), _toLogValue(nested)),
+      );
+    }
+    return value.toString();
+  }
+
+  String _formatJsArgsForLog(List<dynamic> args) {
+    try {
+      return jsonEncode(_toLogValue(args));
+    } catch (_) {
+      return args.toString();
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -228,6 +251,10 @@ class _HomePageState extends State<HomePage> {
                           handlerName:
                               HomeWebViewBridgeContract.playHandlerName,
                           callback: (args) async {
+                            _logWebView(
+                              'js callback ${HomeWebViewBridgeContract.playHandlerName} '
+                              'args=${_formatJsArgsForLog(args)}',
+                            );
                             if (args.isEmpty || args.first is! Map) {
                               return;
                             }
@@ -241,6 +268,10 @@ class _HomePageState extends State<HomePage> {
                           handlerName:
                               HomeWebViewBridgeContract.errorHandlerName,
                           callback: (args) async {
+                            _logWebView(
+                              'js callback ${HomeWebViewBridgeContract.errorHandlerName} '
+                              'args=${_formatJsArgsForLog(args)}',
+                            );
                             final first = args.isNotEmpty ? args.first : null;
                             String message = '未知错误';
                             if (first is Map) {
