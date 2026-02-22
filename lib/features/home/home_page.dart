@@ -23,6 +23,7 @@ class _HomePageState extends State<HomePage> {
   InAppWebViewController? _webController;
   String _currentUrl = 'https://www.wogg.net/';
   String? _remoteBridgeJsUrl;
+  String? _homeWebViewUserAgent;
   bool _homeUrlResolved = false;
   String? _bridgeScriptAsset;
   DateTime? _lastBridgeErrorAt;
@@ -79,24 +80,43 @@ class _HomePageState extends State<HomePage> {
     final data = await Future.wait<Object?>(<Future<Object?>>[
       _configRepository.loadHomeSiteUrlOrDefault(),
       _configRepository.loadHomeBridgeRemoteJsUrlOrNull(),
+      _configRepository.loadHomeWebViewUserAgentOrNull(),
     ]);
     final url = data[0]! as String;
     final remoteJsUrl = data[1] as String?;
+    final homeUa = data[2] as String?;
     final previousUrl = _currentUrl;
     if (!mounted) return;
     setState(() {
       _currentUrl = url;
       _remoteBridgeJsUrl = remoteJsUrl;
+      _homeWebViewUserAgent = homeUa;
       _homeUrlResolved = true;
     });
     _logWebView(
       'config loaded: current=$url previous=$previousUrl '
-      'forceReload=$forceReload controllerReady=${_webController != null}',
+      'forceReload=$forceReload controllerReady=${_webController != null} '
+      'uaSet=${homeUa != null && homeUa.isNotEmpty}',
     );
     final controller = _webController;
-    if (controller != null && (forceReload || previousUrl != url)) {
-      _logWebView('load configured url: $url');
-      await controller.loadUrl(urlRequest: URLRequest(url: WebUri(url)));
+    if (controller != null) {
+      await _applyRuntimeWebViewSettings(controller);
+      if (forceReload || previousUrl != url) {
+        _logWebView('load configured url: $url');
+        await controller.loadUrl(urlRequest: URLRequest(url: WebUri(url)));
+      }
+    }
+  }
+
+  Future<void> _applyRuntimeWebViewSettings(
+    InAppWebViewController controller,
+  ) async {
+    try {
+      await controller.setSettings(
+        settings: InAppWebViewSettings(userAgent: _homeWebViewUserAgent),
+      );
+    } catch (e) {
+      _logWebView('set runtime settings failed: $e');
     }
   }
 
@@ -243,10 +263,12 @@ class _HomePageState extends State<HomePage> {
                       initialSettings: InAppWebViewSettings(
                         javaScriptEnabled: true,
                         javaScriptCanOpenWindowsAutomatically: true,
+                        userAgent: _homeWebViewUserAgent,
                       ),
                       onWebViewCreated: (controller) {
                         _webController = controller;
                         _logWebView('created, configured=$_currentUrl');
+                        _applyRuntimeWebViewSettings(controller);
                         controller.addJavaScriptHandler(
                           handlerName:
                               HomeWebViewBridgeContract.playHandlerName,

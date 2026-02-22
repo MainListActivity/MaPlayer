@@ -15,6 +15,7 @@
     remoteTimeoutMs: 2000,
     detailClickHooked: false,
     bodySiblingCleanupHooked: false,
+    bodySiblingCleanupTimerStarted: false,
   };
   window[BRIDGE_STATE_KEY] = state;
 
@@ -61,15 +62,15 @@
     );
     const srcSet = isLazy
       ? imgNode.getAttribute('data-src') ||
-        imgNode.getAttribute('data-original') ||
-        imgNode.getAttribute('data-lazy-src') ||
-        ''
+      imgNode.getAttribute('data-original') ||
+      imgNode.getAttribute('data-lazy-src') ||
+      ''
       : imgNode.currentSrc ||
-        imgNode.getAttribute('data-src') ||
-        imgNode.getAttribute('data-original') ||
-        imgNode.getAttribute('data-lazy-src') ||
-        imgNode.getAttribute('src') ||
-        '';
+      imgNode.getAttribute('data-src') ||
+      imgNode.getAttribute('data-original') ||
+      imgNode.getAttribute('data-lazy-src') ||
+      imgNode.getAttribute('src') ||
+      '';
     if (!srcSet) return '';
     const first = srcSet.split(',')[0].trim().split(' ')[0].trim();
     return toAbsolute(first);
@@ -236,11 +237,11 @@
         outerHTML: anchor && anchor.outerHTML ? String(anchor.outerHTML) : '',
         nextSiblingImage: nextImg
           ? {
-              dataSrc: String(nextImg.getAttribute('data-src') || ''),
-              src: String(nextImg.getAttribute('src') || ''),
-              currentSrc: String(nextImg.currentSrc || ''),
-              outerHTML: String(nextImg.outerHTML || ''),
-            }
+            dataSrc: String(nextImg.getAttribute('data-src') || ''),
+            src: String(nextImg.getAttribute('src') || ''),
+            currentSrc: String(nextImg.currentSrc || ''),
+            outerHTML: String(nextImg.outerHTML || ''),
+          }
           : null,
       },
       card: {
@@ -493,6 +494,11 @@
   function removeBodySiblingsExceptScript() {
     const root = document.documentElement;
     const body = document.body;
+    //移除遮罩 id="image-overlay-container"
+    const overlay = root.getElementById('image-overlay-container');
+    if (overlay) {
+      overlay.remove();
+    }
     if (!root || !body) return;
     const siblings = Array.prototype.filter.call(root.children, function (node) {
       if (!node || node === body) return false;
@@ -515,15 +521,22 @@
 
   function ensureBodySiblingCleanup() {
     removeBodySiblingsExceptScript();
-    if (state.bodySiblingCleanupHooked) return;
-    window.addEventListener(
-      'load',
-      function () {
+    if (!state.bodySiblingCleanupHooked) {
+      window.addEventListener(
+        'load',
+        function () {
+          removeBodySiblingsExceptScript();
+        },
+        { once: true }
+      );
+      state.bodySiblingCleanupHooked = true;
+    }
+    if (!state.bodySiblingCleanupTimerStarted) {
+      setInterval(function () {
         removeBodySiblingsExceptScript();
-      },
-      { once: true }
-    );
-    state.bodySiblingCleanupHooked = true;
+      }, 1000);
+      state.bodySiblingCleanupTimerStarted = true;
+    }
   }
 
   function ensurePlayButtons() {

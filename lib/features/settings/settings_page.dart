@@ -16,6 +16,7 @@ class _SettingsPageState extends State<SettingsPage> {
   final _repo = TvBoxConfigRepository();
   final _urlController = TextEditingController();
   final _remoteJsUrlController = TextEditingController();
+  final _homeUaController = TextEditingController();
   final _authService = QuarkAuthService();
 
   bool _isSaving = false;
@@ -32,17 +33,20 @@ class _SettingsPageState extends State<SettingsPage> {
   void dispose() {
     _urlController.dispose();
     _remoteJsUrlController.dispose();
+    _homeUaController.dispose();
     super.dispose();
   }
 
   Future<void> _hydrate() async {
     final url = await _repo.loadHomeSiteUrlOrDefault();
     final remoteJsUrl = await _repo.loadHomeBridgeRemoteJsUrlOrNull();
+    final homeUa = await _repo.loadHomeWebViewUserAgentOrNull();
     final auth = await _authService.currentAuthState();
     if (!mounted) return;
     setState(() {
       _urlController.text = url;
       _remoteJsUrlController.text = remoteJsUrl ?? '';
+      _homeUaController.text = homeUa ?? '';
       _authState = auth;
       _isLoading = false;
     });
@@ -52,6 +56,7 @@ class _SettingsPageState extends State<SettingsPage> {
     final raw = _urlController.text.trim();
     if (raw.isEmpty) return;
     final remoteRaw = _remoteJsUrlController.text.trim();
+    final homeUaRaw = _homeUaController.text.trim();
     setState(() {
       _isSaving = true;
     });
@@ -59,6 +64,9 @@ class _SettingsPageState extends State<SettingsPage> {
       await _repo.saveHomeSiteUrl(raw);
       await _repo.saveHomeBridgeRemoteJsUrl(
         remoteRaw.isEmpty ? null : remoteRaw,
+      );
+      await _repo.saveHomeWebViewUserAgent(
+        homeUaRaw.isEmpty ? null : homeUaRaw,
       );
       if (!mounted) return;
       ScaffoldMessenger.of(
@@ -163,6 +171,15 @@ class _SettingsPageState extends State<SettingsPage> {
                         labelText: 'Remote Bridge JS URL (optional)',
                         hintText: 'https://example.com/home-bridge.js',
                         prefixIcon: Icon(Icons.code),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _homeUaController,
+                      decoration: const InputDecoration(
+                        labelText: 'Home WebView UA (optional)',
+                        hintText: 'Mozilla/5.0 ...',
+                        prefixIcon: Icon(Icons.devices),
                       ),
                     ),
                     const SizedBox(height: 12),

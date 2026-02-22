@@ -11,6 +11,7 @@ class TvBoxConfigRepository {
   static const String _rawJsonKey = 'tvbox_raw_json';
   static const String _homeSiteUrlKey = 'home_site_url';
   static const String _homeBridgeRemoteJsUrlKey = 'home_bridge_remote_js_url';
+  static const String _homeWebViewUserAgentKey = 'home_webview_user_agent';
   static const String _defaultHomeSiteUrl = 'https://www.wogg.net/';
   static final ValueNotifier<int> configRevision = ValueNotifier<int>(0);
 
@@ -27,6 +28,13 @@ class TvBoxConfigRepository {
     final trimmed = rawUrl.trim();
     if (trimmed.isEmpty) return null;
     return normalizeHttpUrl(trimmed, emptyMessage: '远程脚本地址不能为空。');
+  }
+
+  String? normalizeOptionalUserAgent(String? rawUa) {
+    if (rawUa == null) return null;
+    final trimmed = rawUa.trim();
+    if (trimmed.isEmpty) return null;
+    return trimmed;
   }
 
   String normalizeHttpUrl(String rawUrl, {required String emptyMessage}) {
@@ -96,6 +104,28 @@ class TvBoxConfigRepository {
     } on FormatException {
       return null;
     }
+  }
+
+  Future<void> saveHomeWebViewUserAgent(String? rawUa) async {
+    final prefs = await SharedPreferences.getInstance();
+    final normalized = normalizeOptionalUserAgent(rawUa);
+    final prev = prefs.getString(_homeWebViewUserAgentKey) ?? '';
+    final next = normalized ?? '';
+    if (next.isEmpty) {
+      await prefs.remove(_homeWebViewUserAgentKey);
+    } else {
+      await prefs.setString(_homeWebViewUserAgentKey, next);
+    }
+    if (prev != next) {
+      configRevision.value += 1;
+    }
+  }
+
+  Future<String?> loadHomeWebViewUserAgentOrNull() async {
+    final prefs = await SharedPreferences.getInstance();
+    final stored = prefs.getString(_homeWebViewUserAgentKey)?.trim() ?? '';
+    if (stored.isEmpty) return null;
+    return stored;
   }
 
   Future<String> fetchFromUrl(String url) async {
