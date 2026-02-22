@@ -26,7 +26,8 @@ class QuarkAuthService {
     final json = await _credentialStore.readJson(CredentialStore.quarkAuthKey);
     if (json == null) return null;
     final state = QuarkAuthState.fromJson(json);
-    final hasTokenPair = state.accessToken.isNotEmpty && state.refreshToken.isNotEmpty;
+    final hasTokenPair =
+        state.accessToken.isNotEmpty && state.refreshToken.isNotEmpty;
     final hasCookie = state.cookie != null && state.cookie!.isNotEmpty;
     if (!hasTokenPair && !hasCookie) {
       return null;
@@ -46,7 +47,9 @@ class QuarkAuthService {
       if (!allowFallback) {
         return null;
       }
-      _logAuth('probe failed but cookie heuristic matched, accepting cookie login');
+      _logAuth(
+        'probe failed but cookie heuristic matched, accepting cookie login',
+      );
     }
     final now = DateTime.now().millisecondsSinceEpoch;
     final state = QuarkAuthState(
@@ -55,7 +58,10 @@ class QuarkAuthService {
       expiresAtEpochMs: now + const Duration(days: 30).inMilliseconds,
       cookie: cookieHeader,
     );
-    await _credentialStore.writeJson(CredentialStore.quarkAuthKey, state.toJson());
+    await _credentialStore.writeJson(
+      CredentialStore.quarkAuthKey,
+      state.toJson(),
+    );
     return state;
   }
 
@@ -97,22 +103,10 @@ class QuarkAuthService {
         .map((part) => part.substring(0, part.indexOf('=')))
         .map((name) => name.toLowerCase())
         .toSet();
-    final strongMarkers = <String>[
-      '__puus',
-      '__pus',
-      '_up_a4a_11_',
-      'access_token',
-      'refresh_token',
-      'auth',
-      'token',
-      'sid',
-      'uid',
-      'userid',
-    ];
-    final hasMarker = cookieNames.any(
-      (name) => strongMarkers.any((marker) => name.contains(marker)),
-    );
-    return hasMarker || cookieNames.length >= 4;
+    _logAuth('cookieNames: $cookieNames');
+    // Must have all three required Quark auth cookies simultaneously.
+    const requiredMarkers = ['__pus', '__puus'];
+    return requiredMarkers.every((marker) => cookieNames.contains(marker));
   }
 
   Future<QuarkQrSession> createQrSession() async {
@@ -186,7 +180,9 @@ class QuarkAuthService {
     if (state == null) {
       throw QuarkException('Quark login required', code: 'AUTH_REQUIRED');
     }
-    if (state.cookie != null && state.cookie!.isNotEmpty && state.refreshToken.isEmpty) {
+    if (state.cookie != null &&
+        state.cookie!.isNotEmpty &&
+        state.refreshToken.isEmpty) {
       return state;
     }
     if (!state.isExpired) {

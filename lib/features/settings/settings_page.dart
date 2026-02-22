@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:ma_palyer/app/app_route.dart';
 import 'package:ma_palyer/features/cloud/quark/quark_auth_service.dart';
 import 'package:ma_palyer/features/cloud/quark/quark_login_webview_page.dart';
@@ -100,6 +101,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Future<void> _logoutQuark() async {
     await _authService.clearAuthState();
+    await CookieManager.instance().deleteAllCookies();
     if (!mounted) return;
     setState(() {
       _authState = null;
