@@ -7,6 +7,13 @@ import 'package:http/http.dart' as http;
 import 'package:ma_palyer/features/cloud/quark/quark_auth_service.dart';
 import 'package:ma_palyer/features/cloud/quark/quark_models.dart';
 
+class _QuarkDownloadInfo {
+  const _QuarkDownloadInfo({required this.url, this.sizeBytes});
+
+  final String url;
+  final int? sizeBytes;
+}
+
 class QuarkTransferService {
   QuarkTransferService({
     required QuarkAuthService authService,
@@ -924,17 +931,10 @@ class QuarkTransferService {
         );
   }
 
-
-
   Uri _buildDownloadUri(Uri base) {
     return base
         .resolve('file/download')
-        .replace(
-          queryParameters: <String, String>{
-            'pr': 'ucpro',
-            'fr': 'pc',
-          },
-        );
+        .replace(queryParameters: <String, String>{'pr': 'ucpro', 'fr': 'pc'});
   }
 
   Uri _buildTaskUri(
@@ -962,8 +962,6 @@ class QuarkTransferService {
     'Referer': 'https://pan.quark.cn/',
     'User-Agent': _desktopChromeUa,
   };
-
-
 
   Map<String, String> _downloadHeaders(QuarkAuthState auth) {
     final headers = _authHeaders(auth);
@@ -1062,8 +1060,6 @@ class QuarkTransferService {
     return variants.first;
   }
 
-
-
   Future<QuarkPlayableVariant?> _resolveRawVariant({
     required QuarkAuthState auth,
     required String savedFileId,
@@ -1088,8 +1084,8 @@ class QuarkTransferService {
       return null;
     }
 
-    final downloadUrl = _extractDownloadUrl(body['data']);
-    if (downloadUrl.isEmpty) {
+    final downloadInfo = _extractDownloadInfo(body['data']);
+    if (downloadInfo.url.isEmpty) {
       return null;
     }
 
@@ -1103,12 +1099,13 @@ class QuarkTransferService {
 
     return QuarkPlayableVariant(
       resolution: 'raw',
-      url: downloadUrl,
+      url: downloadInfo.url,
       headers: headers,
+      sizeBytes: downloadInfo.sizeBytes,
     );
   }
 
-  String _extractDownloadUrl(Object? raw) {
+  _QuarkDownloadInfo _extractDownloadInfo(Object? raw) {
     if (raw is Map) {
       final data = Map<String, dynamic>.from(raw);
       final direct =
@@ -1117,26 +1114,48 @@ class QuarkTransferService {
           data['url']?.toString() ??
           '';
       if (direct.isNotEmpty) {
-        return direct;
+        return _QuarkDownloadInfo(
+          url: direct,
+          sizeBytes: _extractSizeBytes(data),
+        );
       }
-      final nested = _extractDownloadUrl(data['data']);
-      if (nested.isNotEmpty) {
+      final nested = _extractDownloadInfo(data['data']);
+      if (nested.url.isNotEmpty) {
         return nested;
       }
-      final listUrl = _extractDownloadUrl(data['list']);
-      if (listUrl.isNotEmpty) {
+      final listUrl = _extractDownloadInfo(data['list']);
+      if (listUrl.url.isNotEmpty) {
         return listUrl;
       }
     }
     if (raw is List) {
       for (final item in raw) {
-        final url = _extractDownloadUrl(item);
-        if (url.isNotEmpty) {
-          return url;
+        final info = _extractDownloadInfo(item);
+        if (info.url.isNotEmpty) {
+          return info;
         }
       }
     }
-    return '';
+    return const _QuarkDownloadInfo(url: '');
+  }
+
+  int? _extractSizeBytes(Map<String, dynamic> data) {
+    final rawSize =
+        data['size'] ??
+        data['file_size'] ??
+        data['fileSize'] ??
+        data['total_size'] ??
+        data['totalSize'];
+    if (rawSize is num) {
+      return rawSize.toInt();
+    }
+    if (rawSize is String) {
+      final parsed = int.tryParse(rawSize.trim());
+      if (parsed != null) {
+        return parsed;
+      }
+    }
+    return null;
   }
 
   String _normalizeResolution(String? resolution) {

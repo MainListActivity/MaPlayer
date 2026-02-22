@@ -454,6 +454,7 @@ void main() {
             'data': <Map<String, dynamic>>[
               <String, dynamic>{
                 'download_url': 'https://video.example.com/raw.mp4',
+                'size': 1073741824,
               },
             ],
           }),
@@ -477,6 +478,7 @@ void main() {
     expect(downloadUserAgent, contains('quark-cloud-drive/3.0.1'));
     expect(downloadCookie, cookie);
     expect(raw.url, 'https://video.example.com/raw.mp4');
+    expect(raw.sizeBytes, 1073741824);
     expect(raw.headers['Cookie'], cookie);
     expect(raw.headers['User-Agent'], contains('quark-cloud-drive/3.0.1'));
   });
@@ -543,5 +545,4 @@ void main() {
       expect(playable.variants.map((e) => e.resolution), contains('raw'));
     },
   );
-
 }
