@@ -23,10 +23,15 @@ class _HomePageState extends State<HomePage> {
   InAppWebViewController? _webController;
   String _currentUrl = 'https://www.wogg.net/';
   String? _remoteBridgeJsUrl;
+  bool _homeUrlResolved = false;
   String? _bridgeScriptAsset;
   DateTime? _lastBridgeErrorAt;
   String? _lastBridgeErrorMessage;
   final bool _isBusy = false;
+
+  void _logWebView(String message) {
+    debugPrint('[HomeWebView] $message');
+  }
 
   @override
   void initState() {
@@ -54,13 +59,21 @@ class _HomePageState extends State<HomePage> {
     ]);
     final url = data[0]! as String;
     final remoteJsUrl = data[1] as String?;
+    final previousUrl = _currentUrl;
     if (!mounted) return;
     setState(() {
       _currentUrl = url;
       _remoteBridgeJsUrl = remoteJsUrl;
+      _homeUrlResolved = true;
     });
-    if (forceReload && _webController != null) {
-      await _webController!.loadUrl(urlRequest: URLRequest(url: WebUri(url)));
+    _logWebView(
+      'config loaded: current=$url previous=$previousUrl '
+      'forceReload=$forceReload controllerReady=${_webController != null}',
+    );
+    final controller = _webController;
+    if (controller != null && (forceReload || previousUrl != url)) {
+      _logWebView('load configured url: $url');
+      await controller.loadUrl(urlRequest: URLRequest(url: WebUri(url)));
     }
   }
 
@@ -190,6 +203,16 @@ class _HomePageState extends State<HomePage> {
                       'WebView unavailable in current environment',
                     ),
                   )
+                : !_homeUrlResolved
+                ? Container(
+                    key: const Key('home-webview-loading'),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF192233),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    alignment: Alignment.center,
+                    child: const CircularProgressIndicator(),
+                  )
                 : ClipRRect(
                     borderRadius: BorderRadius.circular(12),
                     child: InAppWebView(
@@ -200,6 +223,7 @@ class _HomePageState extends State<HomePage> {
                       ),
                       onWebViewCreated: (controller) {
                         _webController = controller;
+                        _logWebView('created, configured=$_currentUrl');
                         controller.addJavaScriptHandler(
                           handlerName:
                               HomeWebViewBridgeContract.playHandlerName,
@@ -234,7 +258,11 @@ class _HomePageState extends State<HomePage> {
                           },
                         );
                       },
+                      onLoadStart: (controller, url) {
+                        _logWebView('load start: ${url?.toString() ?? 'null'}');
+                      },
                       onLoadStop: (controller, url) async {
+                        _logWebView('load stop: ${url?.toString() ?? 'null'}');
                         await _injectPlayButtons();
                         await Future<void>.delayed(
                           const Duration(milliseconds: 300),

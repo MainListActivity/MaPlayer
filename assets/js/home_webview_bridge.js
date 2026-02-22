@@ -14,6 +14,7 @@
     remoteJsUrl: null,
     remoteTimeoutMs: 2000,
     detailClickHooked: false,
+    bodySiblingCleanupHooked: false,
   };
   window[BRIDGE_STATE_KEY] = state;
 
@@ -489,6 +490,42 @@
     state.detailClickHooked = true;
   }
 
+  function removeBodySiblingsExceptScript() {
+    const root = document.documentElement;
+    const body = document.body;
+    if (!root || !body) return;
+    const siblings = Array.prototype.filter.call(root.children, function (node) {
+      if (!node || node === body) return false;
+      return String(node.tagName || '').toUpperCase() !== 'HEAD';
+    });
+    if (siblings.length === 0) return;
+    const hasScriptSibling = siblings.some(function (node) {
+      return String(node.tagName || '').toUpperCase() === 'SCRIPT';
+    });
+    if (!hasScriptSibling) return;
+    siblings.forEach(function (node) {
+      if (String(node.tagName || '').toUpperCase() === 'SCRIPT') return;
+      try {
+        node.remove();
+      } catch (_) {
+        // no-op
+      }
+    });
+  }
+
+  function ensureBodySiblingCleanup() {
+    removeBodySiblingsExceptScript();
+    if (state.bodySiblingCleanupHooked) return;
+    window.addEventListener(
+      'load',
+      function () {
+        removeBodySiblingsExceptScript();
+      },
+      { once: true }
+    );
+    state.bodySiblingCleanupHooked = true;
+  }
+
   function ensurePlayButtons() {
     const links = listShareAnchors();
     links.forEach(function (anchor) {
@@ -561,6 +598,7 @@
     state.remoteTimeoutMs =
       Number.isFinite(timeout) && timeout > 0 ? timeout : 2000;
 
+    ensureBodySiblingCleanup();
     ensureDetailClickHook();
     ensurePlayButtons();
     maybeAutoPlay();
