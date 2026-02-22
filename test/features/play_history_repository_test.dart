@@ -59,4 +59,36 @@ void main() {
     expect(a?.lastEpisodeFileId, 'f1');
     expect(a?.coverHeaders['Referer'], 'https://www.wogg.net/v/1');
   });
+
+  test('migrates bare doubanio.com cover URLs to Baidu proxy on load', () async {
+    const doubanUrl =
+        'https://img9.doubanio.com/view/photo/s_ratio_poster/public/p123.webp';
+    const expectedUrl =
+        'https://image.baidu.com/search/down?url=https%3A%2F%2Fimg9.doubanio.com%2Fview%2Fphoto%2Fs_ratio_poster%2Fpublic%2Fp123.webp';
+
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    final repo = PlayHistoryRepository();
+
+    await repo.upsertByShareUrl(
+      const PlayHistoryItem(
+        shareUrl: 'https://pan.quark.cn/s/c',
+        pageUrl: 'https://example.com/movie',
+        title: 'Movie',
+        coverUrl: doubanUrl,
+        intro: '',
+        showDirName: 'Movie',
+        updatedAtEpochMs: 1,
+      ),
+    );
+
+    // Simulate a legacy entry by writing the raw douban URL directly to prefs
+    // (already done via upsert above since migration only runs on load).
+    // Now read back — migration should have converted the URL on first load.
+    final item = await repo.findByShareUrl('https://pan.quark.cn/s/c');
+    expect(item?.coverUrl, expectedUrl);
+
+    // Second load should return same value (idempotent).
+    final item2 = await repo.findByShareUrl('https://pan.quark.cn/s/c');
+    expect(item2?.coverUrl, expectedUrl);
+  });
 }

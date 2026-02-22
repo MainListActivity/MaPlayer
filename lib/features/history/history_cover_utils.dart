@@ -19,19 +19,17 @@ String _normalizeCoverUrl(String raw) {
   final uri = Uri.tryParse(trimmed);
   if (uri == null) return trimmed;
 
-  final host = uri.host.toLowerCase();
-  final path = uri.path.toLowerCase();
-  if (host == 'image.baidu.com' && path == '/search/down') {
-    final direct = uri.queryParameters['url']?.trim() ?? '';
-    if (direct.isNotEmpty) {
-      final parsedDirect = Uri.tryParse(direct);
-      if (parsedDirect != null &&
-          (parsedDirect.scheme == 'http' || parsedDirect.scheme == 'https') &&
-          parsedDirect.host.isNotEmpty) {
-        return parsedDirect.toString();
-      }
-    }
+  // If the URL points directly to doubanio.com, wrap it with the Baidu image
+  // proxy to avoid 403/567 errors caused by Douban's hotlink protection.
+  if (uri.host.toLowerCase().endsWith('doubanio.com')) {
+    return Uri(
+      scheme: 'https',
+      host: 'image.baidu.com',
+      path: '/search/down',
+      queryParameters: {'url': uri.toString()},
+    ).toString();
   }
+
   return uri.toString();
 }
 
@@ -49,10 +47,6 @@ Map<String, String> _normalizeCoverHeaders({
   }
 
   final coverHost = Uri.tryParse(coverUrl)?.host.toLowerCase() ?? '';
-  if (coverHost.endsWith('doubanio.com')) {
-    return const <String, String>{'Referer': 'https://movie.douban.com/'};
-  }
-
   if (base.isEmpty) return const <String, String>{};
   final refererHost =
       Uri.tryParse(base['Referer'] ?? '')?.host.toLowerCase() ?? '';
