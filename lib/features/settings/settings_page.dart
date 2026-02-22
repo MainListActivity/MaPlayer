@@ -15,6 +15,7 @@ class SettingsPage extends StatefulWidget {
 class _SettingsPageState extends State<SettingsPage> {
   final _repo = TvBoxConfigRepository();
   final _urlController = TextEditingController();
+  final _remoteJsUrlController = TextEditingController();
   final _authService = QuarkAuthService();
 
   bool _isSaving = false;
@@ -30,15 +31,18 @@ class _SettingsPageState extends State<SettingsPage> {
   @override
   void dispose() {
     _urlController.dispose();
+    _remoteJsUrlController.dispose();
     super.dispose();
   }
 
   Future<void> _hydrate() async {
     final url = await _repo.loadHomeSiteUrlOrDefault();
+    final remoteJsUrl = await _repo.loadHomeBridgeRemoteJsUrlOrNull();
     final auth = await _authService.currentAuthState();
     if (!mounted) return;
     setState(() {
       _urlController.text = url;
+      _remoteJsUrlController.text = remoteJsUrl ?? '';
       _authState = auth;
       _isLoading = false;
     });
@@ -47,19 +51,25 @@ class _SettingsPageState extends State<SettingsPage> {
   Future<void> _saveHomeUrl() async {
     final raw = _urlController.text.trim();
     if (raw.isEmpty) return;
+    final remoteRaw = _remoteJsUrlController.text.trim();
     setState(() {
       _isSaving = true;
     });
     try {
       await _repo.saveHomeSiteUrl(raw);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('主页地址已保存，正在返回首页加载')),
+      await _repo.saveHomeBridgeRemoteJsUrl(
+        remoteRaw.isEmpty ? null : remoteRaw,
       );
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('配置已保存，正在返回首页加载')));
       Navigator.pushReplacementNamed(context, AppRoutes.home);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('保存失败: $e')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('保存失败: $e')));
     } finally {
       if (mounted) {
         setState(() {
@@ -73,9 +83,9 @@ class _SettingsPageState extends State<SettingsPage> {
     final ok = await QuarkLoginWebviewPage.open(context, _authService);
     if (!mounted) return;
     if (ok) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('夸克登录态已更新')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('夸克登录态已更新')));
       await _hydrate();
     }
   }
@@ -86,7 +96,9 @@ class _SettingsPageState extends State<SettingsPage> {
     setState(() {
       _authState = null;
     });
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已退出夸克登录')));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('已退出夸克登录')));
   }
 
   @override
@@ -117,10 +129,16 @@ class _SettingsPageState extends State<SettingsPage> {
                     Text(
                       'Configuration',
                       key: Key('settings-page-title'),
-                      style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700),
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                     SizedBox(height: 8),
-                    Text('配置主页站点地址与夸克登录状态。', style: TextStyle(color: Colors.white70)),
+                    Text(
+                      '配置主页站点地址与夸克登录状态。',
+                      style: TextStyle(color: Colors.white70),
+                    ),
                   ],
                 ),
               ),
@@ -139,10 +157,19 @@ class _SettingsPageState extends State<SettingsPage> {
                       ),
                     ),
                     const SizedBox(height: 12),
+                    TextField(
+                      controller: _remoteJsUrlController,
+                      decoration: const InputDecoration(
+                        labelText: 'Remote Bridge JS URL (optional)',
+                        hintText: 'https://example.com/home-bridge.js',
+                        prefixIcon: Icon(Icons.code),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
                     FilledButton.icon(
                       onPressed: _isSaving ? null : _saveHomeUrl,
                       icon: const Icon(Icons.save),
-                      label: Text(_isSaving ? '保存中...' : '保存并加载首页'),
+                      label: Text(_isSaving ? '保存中...' : '保存配置并加载首页'),
                     ),
                   ],
                 ),
@@ -208,7 +235,10 @@ class _SectionCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+          Text(
+            title,
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+          ),
           const SizedBox(height: 10),
           child,
         ],

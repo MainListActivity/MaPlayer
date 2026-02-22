@@ -10,6 +10,7 @@ class TvBoxConfigRepository {
   static const String _sourceUrlKey = 'tvbox_source_url';
   static const String _rawJsonKey = 'tvbox_raw_json';
   static const String _homeSiteUrlKey = 'home_site_url';
+  static const String _homeBridgeRemoteJsUrlKey = 'home_bridge_remote_js_url';
   static const String _defaultHomeSiteUrl = 'https://www.wogg.net/';
   static final ValueNotifier<int> configRevision = ValueNotifier<int>(0);
 
@@ -19,6 +20,13 @@ class TvBoxConfigRepository {
 
   String normalizeHomeUrl(String rawUrl) {
     return normalizeHttpUrl(rawUrl, emptyMessage: '主页地址不能为空。');
+  }
+
+  String? normalizeOptionalHttpUrl(String? rawUrl) {
+    if (rawUrl == null) return null;
+    final trimmed = rawUrl.trim();
+    if (trimmed.isEmpty) return null;
+    return normalizeHttpUrl(trimmed, emptyMessage: '远程脚本地址不能为空。');
   }
 
   String normalizeHttpUrl(String rawUrl, {required String emptyMessage}) {
@@ -61,6 +69,32 @@ class TvBoxConfigRepository {
       return normalizeHomeUrl(stored);
     } on FormatException {
       return _defaultHomeSiteUrl;
+    }
+  }
+
+  Future<void> saveHomeBridgeRemoteJsUrl(String? rawUrl) async {
+    final prefs = await SharedPreferences.getInstance();
+    final normalized = normalizeOptionalHttpUrl(rawUrl);
+    final prev = prefs.getString(_homeBridgeRemoteJsUrlKey) ?? '';
+    final next = normalized ?? '';
+    if (next.isEmpty) {
+      await prefs.remove(_homeBridgeRemoteJsUrlKey);
+    } else {
+      await prefs.setString(_homeBridgeRemoteJsUrlKey, next);
+    }
+    if (prev != next) {
+      configRevision.value += 1;
+    }
+  }
+
+  Future<String?> loadHomeBridgeRemoteJsUrlOrNull() async {
+    final prefs = await SharedPreferences.getInstance();
+    final stored = prefs.getString(_homeBridgeRemoteJsUrlKey)?.trim() ?? '';
+    if (stored.isEmpty) return null;
+    try {
+      return normalizeOptionalHttpUrl(stored);
+    } on FormatException {
+      return null;
     }
   }
 

@@ -1,6 +1,10 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
+import 'package:flutter/services.dart';
 import 'package:ma_palyer/app/app_route.dart';
+import 'package:ma_palyer/features/home/home_webview_bridge_contract.dart';
 
 import 'package:ma_palyer/features/playback/share_play_orchestrator.dart';
 import 'package:ma_palyer/features/player/player_page.dart';
@@ -18,6 +22,10 @@ class _HomePageState extends State<HomePage> {
 
   InAppWebViewController? _webController;
   String _currentUrl = 'https://www.wogg.net/';
+  String? _remoteBridgeJsUrl;
+  String? _bridgeScriptAsset;
+  DateTime? _lastBridgeErrorAt;
+  String? _lastBridgeErrorMessage;
   final bool _isBusy = false;
 
   @override
@@ -40,10 +48,16 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _loadHomeUrl({bool forceReload = false}) async {
-    final url = await _configRepository.loadHomeSiteUrlOrDefault();
+    final data = await Future.wait<Object?>(<Future<Object?>>[
+      _configRepository.loadHomeSiteUrlOrDefault(),
+      _configRepository.loadHomeBridgeRemoteJsUrlOrNull(),
+    ]);
+    final url = data[0]! as String;
+    final remoteJsUrl = data[1] as String?;
     if (!mounted) return;
     setState(() {
       _currentUrl = url;
+      _remoteBridgeJsUrl = remoteJsUrl;
     });
     if (forceReload && _webController != null) {
       await _webController!.loadUrl(urlRequest: URLRequest(url: WebUri(url)));
@@ -57,9 +71,7 @@ class _HomePageState extends State<HomePage> {
     final title = payload['title']?.toString() ?? '';
     final cover = payload['cover']?.toString();
     final coverHeaders = (payload['coverHeaders'] as Map?)
-        ?.map(
-          (key, value) => MapEntry(key.toString(), value?.toString() ?? ''),
-        )
+        ?.map((key, value) => MapEntry(key.toString(), value?.toString() ?? ''))
         .cast<String, String>();
     final intro = payload['intro']?.toString();
     if (shareUrl.isEmpty) {
@@ -87,137 +99,48 @@ class _HomePageState extends State<HomePage> {
   Future<void> _injectPlayButtons() async {
     final controller = _webController;
     if (controller == null) return;
+    final bridgeScript = await _loadBridgeScriptAsset();
+    await controller.evaluateJavascript(source: bridgeScript);
+    final initConfig = HomeWebViewBridgeContract.buildInitConfig(
+      remoteJsUrl: _remoteBridgeJsUrl,
+    );
     await controller.evaluateJavascript(
-      source: '''
+      source:
+          '''
 (function() {
-  const PLAY_CLASS = 'ma-player-injected-btn';
-  const AUTO_FLAG_KEY = 'ma_player_auto_detail_open_ts';
-  const AUTO_MAX_AGE_MS = 2 * 60 * 1000;
-  const AUTO_PLAYED_KEY = '__maPlayerAutoPlayedForUrl';
-
-  function toAbsolute(url) {
-    try {
-      return new URL(url, location.href).toString();
-    } catch (_) {
-      return '';
+  try {
+    const config = ${jsonEncode(initConfig)};
+    if (window.MaPlayerBridge && typeof window.MaPlayerBridge.init === 'function') {
+      window.MaPlayerBridge.init(config);
     }
-  }
-
-  function extractCoverUrl(imgNode) {
-    if (!imgNode) return '';
-    const isLazy = !!(imgNode.classList && imgNode.classList.contains('lazyload'));
-    const srcSet = isLazy
-      ? (imgNode.getAttribute('data-src') || imgNode.getAttribute('data-original') || imgNode.getAttribute('data-lazy-src') || '')
-      : (imgNode.currentSrc || imgNode.getAttribute('data-src') || imgNode.getAttribute('data-original') || imgNode.getAttribute('data-lazy-src') || imgNode.getAttribute('src') || '');
-    if (!srcSet) return '';
-    const first = srcSet.split(',')[0].trim().split(' ')[0].trim();
-    return toAbsolute(first);
-  }
-
-  function extractDetailCoverFromDataSrc() {
-    const detailImgNode = document.querySelector('.module-item-pic img.lazyload, .myui-content__thumb img.lazyload, .stui-content__thumb img.lazyload, img.lazyload');
-    if (!detailImgNode) return '';
-    const dataSrc = detailImgNode.getAttribute('data-src') || detailImgNode.getAttribute('data-original') || detailImgNode.getAttribute('data-lazy-src') || '';
-    if (!dataSrc) return '';
-    const first = dataSrc.split(',')[0].trim().split(' ')[0].trim();
-    return toAbsolute(first);
-  }
-
-  function extractPayload(a) {
-    const card = a.closest('article, .post, .item, .entry, li, .module-item, .module-info, .myui-content__detail, .stui-content__detail') || document.body;
-    const titleNode = card.querySelector('h1, h2, h3, .title, .module-item-title, .entry-title, .page-title, .video-info-header h1, .myui-content__detail .title') || a;
-    const introNode = card.querySelector('.video-info-content, .module-info-introduction-content, .desc, .module-item-note, .entry-content, .myui-content__detail .data, .stui-content__detail p, p');
-    const detailCover = extractDetailCoverFromDataSrc();
-    const imgNode = card.querySelector('img[data-src], img[data-original], img[src], .module-item-pic img, .myui-content__thumb img, .stui-content__thumb img');
-    const cover = detailCover || extractCoverUrl(imgNode);
-    const payload = {
-      shareUrl: toAbsolute(a.getAttribute('href') || a.href || ''),
-      pageUrl: location.href,
-      title: (titleNode && titleNode.textContent ? titleNode.textContent : document.title || '').trim(),
-      intro: (introNode && introNode.textContent ? introNode.textContent : '').trim(),
-      cover: cover,
-      coverHeaders: cover ? { Referer: location.href, Origin: location.origin } : {}
-    };
-    return payload;
-  }
-
-  function shouldMarkAutoForClick(anchor) {
-    if (!anchor) return false;
-    const href = anchor.getAttribute('href') || '';
-    if (!href || href.startsWith('javascript:') || href.startsWith('#')) return false;
-    if (/pan\\.quark\\.cn\\/s\\//i.test(href)) return false;
-    let target;
-    try {
-      target = new URL(href, location.href);
-    } catch (_) {
-      return false;
-    }
-    if (target.origin !== location.origin) return false;
-    const path = target.pathname.toLowerCase();
-    if (path === location.pathname && target.search === location.search) return false;
-    if (/(voddetail|detail|movie|tv|film|video|vod|show)/.test(path)) return true;
-    return !!anchor.closest('.module-item, .myui-vodlist__box, .stui-vodlist__box, .video-item, .post');
-  }
-
-  if (!window.__maPlayerDetailClickHooked) {
-    document.addEventListener('click', function(evt) {
-      const anchor = evt.target && evt.target.closest ? evt.target.closest('a[href]') : null;
-      if (!anchor) return;
-      if (shouldMarkAutoForClick(anchor)) {
-        sessionStorage.setItem(AUTO_FLAG_KEY, String(Date.now()));
-      }
-    }, true);
-    window.__maPlayerDetailClickHooked = true;
-  }
-
-  const links = document.querySelectorAll('a[href^="https://pan.quark.cn/s/"], a[href^="http://pan.quark.cn/s/"]');
-  links.forEach((a) => {
-    const next = a.nextElementSibling;
-    if (next && next.classList && next.classList.contains(PLAY_CLASS)) {
-      return;
-    }
-    const btn = document.createElement('button');
-    btn.textContent = '播放';
-    btn.className = PLAY_CLASS;
-    btn.style.marginLeft = '8px';
-    btn.style.padding = '2px 8px';
-    btn.style.fontSize = '12px';
-    btn.style.background = '#f47b25';
-    btn.style.border = 'none';
-    btn.style.color = '#fff';
-    btn.style.borderRadius = '8px';
-    btn.style.cursor = 'pointer';
-    btn.onclick = function(evt) {
-      evt.preventDefault();
-      evt.stopPropagation();
-      const payload = extractPayload(a);
-      window.flutter_inappwebview.callHandler('maPlayerPlay', payload);
-      return false;
-    };
-    a.insertAdjacentElement('afterend', btn);
-  });
-
-  const autoTs = Number(sessionStorage.getItem(AUTO_FLAG_KEY) || '0');
-  const shouldAutoPlay = Number.isFinite(autoTs) && autoTs > 0 && (Date.now() - autoTs) <= AUTO_MAX_AGE_MS;
-  if (!shouldAutoPlay) {
-    return;
-  }
-  const alreadyForUrl = window[AUTO_PLAYED_KEY];
-  if (alreadyForUrl === location.href) {
-    return;
-  }
-  const firstLink = links.length > 0 ? links[0] : null;
-  if (!firstLink) {
-    return;
-  }
-  window[AUTO_PLAYED_KEY] = location.href;
-  sessionStorage.removeItem(AUTO_FLAG_KEY);
-  setTimeout(function() {
-    window.flutter_inappwebview.callHandler('maPlayerPlay', extractPayload(firstLink));
-  }, 60);
+  } catch (_) {}
 })();
 ''',
     );
+  }
+
+  Future<String> _loadBridgeScriptAsset() async {
+    final cached = _bridgeScriptAsset;
+    if (cached != null) return cached;
+    final loaded = await rootBundle.loadString(
+      'assets/js/home_webview_bridge.js',
+    );
+    _bridgeScriptAsset = loaded;
+    return loaded;
+  }
+
+  void _handleBridgeError(String message) {
+    final now = DateTime.now();
+    final lastAt = _lastBridgeErrorAt;
+    final lastMessage = _lastBridgeErrorMessage;
+    if (lastAt != null &&
+        now.difference(lastAt) < const Duration(seconds: 2) &&
+        lastMessage == message) {
+      return;
+    }
+    _lastBridgeErrorAt = now;
+    _lastBridgeErrorMessage = message;
+    _showSnack('远程脚本已回退本地解析: $message');
   }
 
   void _showSnack(String text) {
@@ -278,7 +201,8 @@ class _HomePageState extends State<HomePage> {
                       onWebViewCreated: (controller) {
                         _webController = controller;
                         controller.addJavaScriptHandler(
-                          handlerName: 'maPlayerPlay',
+                          handlerName:
+                              HomeWebViewBridgeContract.playHandlerName,
                           callback: (args) async {
                             if (args.isEmpty || args.first is! Map) {
                               return;
@@ -287,6 +211,26 @@ class _HomePageState extends State<HomePage> {
                               args.first as Map,
                             );
                             await _handlePlayRequest(payload);
+                          },
+                        );
+                        controller.addJavaScriptHandler(
+                          handlerName:
+                              HomeWebViewBridgeContract.errorHandlerName,
+                          callback: (args) async {
+                            final first = args.isNotEmpty ? args.first : null;
+                            String message = '未知错误';
+                            if (first is Map) {
+                              final raw = first['message']?.toString() ?? '';
+                              if (raw.trim().isNotEmpty) {
+                                message = raw.trim();
+                              }
+                            } else if (first != null) {
+                              final raw = first.toString().trim();
+                              if (raw.isNotEmpty) {
+                                message = raw;
+                              }
+                            }
+                            _handleBridgeError(message);
                           },
                         );
                       },
