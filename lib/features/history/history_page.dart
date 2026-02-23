@@ -246,7 +246,14 @@ class _HistoryPageState extends State<HistoryPage> with RouteAware {
                                         ),
                                         const SizedBox(height: 6),
                                         Text(
-                                          item.lastEpisodeName ?? '点击选集',
+                                          () {
+                                            final name = item.lastEpisodeName ?? '点击选集';
+                                            final pos = item.lastPositionMs;
+                                            if (pos != null && pos > 0) {
+                                              return '$name · ${_formatPosition(pos)}';
+                                            }
+                                            return name;
+                                          }(),
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
                                           style: const TextStyle(
@@ -270,4 +277,15 @@ class _HistoryPageState extends State<HistoryPage> with RouteAware {
       ),
     );
   }
+}
+
+String _formatPosition(int ms) {
+  final total = Duration(milliseconds: ms);
+  final h = total.inHours;
+  final m = total.inMinutes.remainder(60);
+  final s = total.inSeconds.remainder(60);
+  if (h > 0) {
+    return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
+  }
+  return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
 }
