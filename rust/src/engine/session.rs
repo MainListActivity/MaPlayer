@@ -172,7 +172,22 @@ impl ProxySession {
             chunk_size,
         };
 
-        // Kick off warmup prefetch in background.
+        // Immediately prefetch head chunk (chunk 0) so the player's first
+        // request doesn't have to wait.  Also prefetch the tail region
+        // (last ~8 MB / 4 chunks) because MP4 moov atoms are commonly at
+        // the end and the player will seek there right after reading the head.
+        let total_chunks = cache.total_chunks();
+        downloader.start_prefetch(0);
+        {
+            let tail_chunks = 4usize; // ~8 MB with 2 MB chunks
+            let tail_start = total_chunks.saturating_sub(tail_chunks);
+            for i in tail_start..total_chunks {
+                downloader.start_prefetch(i);
+            }
+        }
+
+        // Kick off warmup prefetch in background (may add more ranges after
+        // format detection, but the critical head+tail are already in-flight).
         let warmup_source = source.clone();
         let warmup_downloader = downloader.clone();
         let warmup_cache = cache.clone();

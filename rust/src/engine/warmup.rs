@@ -26,10 +26,13 @@ pub async fn compute_warmup_ranges(
                 let end = moov_end.max(chunk_size - 1).min(content_length - 1);
                 ranges.push((0, end));
             } else {
-                // moov likely at end of file — prefetch head + tail
+                // moov likely at end of file — prefetch head + tail.
+                // Use 4 chunks (~8 MB) for the tail because moov atoms on
+                // large files can be several MB and may sit a few MB before EOF.
+                let tail_window = chunk_size * 4;
                 ranges.push((0, chunk_size.min(content_length) - 1));
-                if content_length > chunk_size {
-                    let tail_start = content_length.saturating_sub(chunk_size);
+                if content_length > tail_window {
+                    let tail_start = content_length.saturating_sub(tail_window);
                     ranges.push((tail_start, content_length - 1));
                 }
             }
@@ -40,9 +43,10 @@ pub async fn compute_warmup_ranges(
         }
         _ => {
             // Unknown format — head + tail as a safe default
+            let tail_window = chunk_size * 4;
             ranges.push((0, chunk_size.min(content_length) - 1));
-            if content_length > chunk_size {
-                let tail_start = content_length.saturating_sub(chunk_size);
+            if content_length > tail_window {
+                let tail_start = content_length.saturating_sub(tail_window);
                 ranges.push((tail_start, content_length - 1));
             }
         }
