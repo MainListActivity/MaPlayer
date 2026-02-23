@@ -175,6 +175,10 @@ class _HistoryPageState extends State<HistoryPage> with RouteAware {
                         coverUrl: item.coverUrl,
                         coverHeaders: item.coverHeaders,
                       );
+                      final pos = item.lastPositionMs;
+                      final episodeSubtitle = (pos != null && pos > 0)
+                          ? '${item.lastEpisodeName ?? '点击选集'} · ${_formatPosition(pos)}'
+                          : (item.lastEpisodeName ?? '点击选集');
                       return InkWell(
                         onTap: _isBusy ? null : () => _openRecent(item),
                         borderRadius: BorderRadius.circular(12),
@@ -246,14 +250,7 @@ class _HistoryPageState extends State<HistoryPage> with RouteAware {
                                         ),
                                         const SizedBox(height: 6),
                                         Text(
-                                          () {
-                                            final name = item.lastEpisodeName ?? '点击选集';
-                                            final pos = item.lastPositionMs;
-                                            if (pos != null && pos > 0) {
-                                              return '$name · ${_formatPosition(pos)}';
-                                            }
-                                            return name;
-                                          }(),
+                                          episodeSubtitle,
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
                                           style: const TextStyle(
