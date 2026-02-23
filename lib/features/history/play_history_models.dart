@@ -11,8 +11,11 @@ class PlayHistoryItem {
     required this.updatedAtEpochMs,
     this.lastEpisodeFileId,
     this.lastEpisodeName,
+    this.lastPositionMs,
     this.cachedEpisodes = const <PlayHistoryEpisode>[],
   });
+
+  static const Object _sentinel = Object();
 
   final String shareUrl;
   final String pageUrl;
@@ -24,6 +27,7 @@ class PlayHistoryItem {
   final String? showFolderId;
   final String? lastEpisodeFileId;
   final String? lastEpisodeName;
+  final int? lastPositionMs;
   final List<PlayHistoryEpisode> cachedEpisodes;
   final int updatedAtEpochMs;
 
@@ -38,6 +42,7 @@ class PlayHistoryItem {
     String? showFolderId,
     String? lastEpisodeFileId,
     String? lastEpisodeName,
+    Object? lastPositionMs = _sentinel,
     List<PlayHistoryEpisode>? cachedEpisodes,
     int? updatedAtEpochMs,
   }) {
@@ -52,6 +57,9 @@ class PlayHistoryItem {
       showFolderId: showFolderId ?? this.showFolderId,
       lastEpisodeFileId: lastEpisodeFileId ?? this.lastEpisodeFileId,
       lastEpisodeName: lastEpisodeName ?? this.lastEpisodeName,
+      lastPositionMs: lastPositionMs == _sentinel
+          ? this.lastPositionMs
+          : lastPositionMs as int?,
       cachedEpisodes: cachedEpisodes ?? this.cachedEpisodes,
       updatedAtEpochMs: updatedAtEpochMs ?? this.updatedAtEpochMs,
     );
@@ -68,6 +76,7 @@ class PlayHistoryItem {
     'showFolderId': showFolderId,
     'lastEpisodeFileId': lastEpisodeFileId,
     'lastEpisodeName': lastEpisodeName,
+    'lastPositionMs': lastPositionMs,
     'cachedEpisodes': cachedEpisodes.map((e) => e.toJson()).toList(),
     'updatedAtEpochMs': updatedAtEpochMs,
   };
@@ -91,6 +100,7 @@ class PlayHistoryItem {
       showFolderId: json['showFolderId']?.toString(),
       lastEpisodeFileId: json['lastEpisodeFileId']?.toString(),
       lastEpisodeName: json['lastEpisodeName']?.toString(),
+      lastPositionMs: (json['lastPositionMs'] as num?)?.toInt(),
       cachedEpisodes: (json['cachedEpisodes'] as List? ?? const <dynamic>[])
           .whereType<Map>()
           .map((e) => PlayHistoryEpisode.fromJson(Map<String, dynamic>.from(e)))
