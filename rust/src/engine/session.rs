@@ -258,10 +258,10 @@ impl ProxySession {
         self.stats
             .record_request(range_len, cached_bytes.min(range_len));
 
-        // Prioritize the required playback window first. Do not flood the
-        // downloader queue with speculative prefetch before required chunks.
+        // Prioritize the required playback window with urgent (dedicated) permits
+        // so the player's blocking request isn't starved by background prefetch.
         for i in first_chunk..=last_chunk {
-            self.downloader.start_prefetch(i);
+            self.downloader.start_urgent_prefetch(i);
         }
 
         // Wait for required chunks.

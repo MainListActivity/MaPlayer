@@ -15,7 +15,8 @@ use crate::source::traits::MediaSource;
 pub struct Downloader {
     source: Arc<dyn MediaSource>,
     cache: Arc<DiskCache>,
-    semaphore: Arc<Semaphore>,
+    urgent_semaphore: Arc<Semaphore>,
+    background_semaphore: Arc<Semaphore>,
     stats: Arc<StatsCollector>,
     chunk_notifiers: Arc<Mutex<Vec<Option<Arc<Notify>>>>>,
     cancel_tokens: Arc<Mutex<Vec<Option<CancellationToken>>>>,
@@ -31,10 +32,13 @@ impl Downloader {
         stats: Arc<StatsCollector>,
     ) -> Self {
         let total_chunks = cache.total_chunks();
+        let urgent_permits = 2usize;
+        let background_permits = (max_concurrency as usize).saturating_sub(urgent_permits).max(1);
         Self {
             source,
             cache,
-            semaphore: Arc::new(Semaphore::new(max_concurrency as usize)),
+            urgent_semaphore: Arc::new(Semaphore::new(urgent_permits)),
+            background_semaphore: Arc::new(Semaphore::new(background_permits)),
             stats,
             chunk_notifiers: Arc::new(Mutex::new(vec![None; total_chunks])),
             cancel_tokens: Arc::new(Mutex::new(vec![None; total_chunks])),
@@ -55,8 +59,17 @@ impl Downloader {
         }
     }
 
-    /// Idempotent: start downloading a chunk if not already cached or in-flight.
+    /// Idempotent: start downloading a chunk with background priority.
     pub fn start_prefetch(&self, chunk_index: usize) {
+        self.start_download(chunk_index, Arc::clone(&self.background_semaphore), false);
+    }
+
+    /// Idempotent: start downloading a chunk with urgent priority (dedicated permits).
+    pub fn start_urgent_prefetch(&self, chunk_index: usize) {
+        self.start_download(chunk_index, Arc::clone(&self.urgent_semaphore), true);
+    }
+
+    fn start_download(&self, chunk_index: usize, semaphore: Arc<Semaphore>, urgent: bool) {
         // Don't start new work if shutdown has been requested.
         if self.shutdown_token.is_cancelled() {
             return;
@@ -94,7 +107,6 @@ impl Downloader {
 
         let source = Arc::clone(&self.source);
         let cache = Arc::clone(&self.cache);
-        let semaphore = Arc::clone(&self.semaphore);
         let stats = Arc::clone(&self.stats);
         let cancel_tokens = Arc::clone(&self.cancel_tokens);
         let chunk_notifiers = Arc::clone(&self.chunk_notifiers);
@@ -113,6 +125,7 @@ impl Downloader {
                 shutdown_token,
                 max_retries,
                 chunk_size,
+                urgent,
             )
             .await;
 
@@ -146,6 +159,7 @@ impl Downloader {
         shutdown_token: CancellationToken,
         max_retries: u32,
         chunk_size: u64,
+        urgent: bool,
     ) -> Result<()> {
         // Check shutdown before waiting for semaphore.
         if shutdown_token.is_cancelled() {
@@ -153,17 +167,20 @@ impl Downloader {
             return Ok(());
         }
 
+        let priority_label = if urgent { "urgent" } else { "background" };
+
         // Acquire semaphore permit, but bail if shutdown fires while waiting.
         let _permit = tokio::select! {
             permit = semaphore.acquire() => {
                 permit.map_err(|e| anyhow::anyhow!("{}", e))?
             }
             _ = shutdown_token.cancelled() => {
-                debug!("chunk {} cancelled while waiting for semaphore", chunk_index);
+                debug!("chunk {} cancelled while waiting for {} semaphore", chunk_index, priority_label);
                 return Ok(());
             }
         };
 
+        debug!("chunk {} acquired {} semaphore permit", chunk_index, priority_label);
         stats.increment_workers();
 
         let result = Self::fetch_with_retry(

@@ -6,8 +6,8 @@ pub const PRIORITY_BUFFER_SECONDS: u64 = 120;
 /// Maximum bytes allowed for an open-ended HTTP response (64 MB).
 pub const MAX_OPEN_ENDED_RESPONSE_BYTES: u64 = 64 * 1024 * 1024;
 
-/// Clamp size for the initial startup probe request (2 MB).
-pub const STARTUP_PROBE_CLAMP_BYTES: u64 = 2 * 1024 * 1024;
+/// Clamp size for the initial startup probe request (512 KB).
+pub const STARTUP_PROBE_CLAMP_BYTES: u64 = 512 * 1024;
 
 /// Minimum byte distance to treat a new request as a seek (4 MB).
 pub const SEEK_THRESHOLD_BYTES: u64 = 4 * 1024 * 1024;
