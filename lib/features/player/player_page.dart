@@ -107,9 +107,11 @@ class _PlayerPageState extends State<PlayerPage> {
     if (prepared != null && currentEpisode != null) {
       final posMs = _playerController.player.state.position.inMilliseconds;
       if (posMs > 0) {
+        final disposeAtMs = DateTime.now().millisecondsSinceEpoch;
         unawaited(_savePlaybackPosition(
           shareUrl: prepared.request.shareUrl,
           positionMs: posMs,
+          disposeAtMs: disposeAtMs,
         ));
       }
     }
@@ -120,12 +122,22 @@ class _PlayerPageState extends State<PlayerPage> {
   Future<void> _savePlaybackPosition({
     required String shareUrl,
     required int positionMs,
+    required int disposeAtMs,
   }) async {
-    final current = await _historyRepository.findByShareUrl(shareUrl);
-    if (current == null) return;
-    await _historyRepository.upsertByShareUrl(
-      current.copyWith(lastPositionMs: positionMs),
-    );
+    try {
+      final current = await _historyRepository.findByShareUrl(shareUrl);
+      if (current == null) return;
+      // Skip if a newer session has already updated this history entry.
+      if (current.updatedAtEpochMs > disposeAtMs) return;
+      await _historyRepository.upsertByShareUrl(
+        current.copyWith(
+          lastPositionMs: positionMs,
+          updatedAtEpochMs: DateTime.now().millisecondsSinceEpoch,
+        ),
+      );
+    } catch (e) {
+      debugPrint('[PlayerPage] Failed to save playback position: $e');
+    }
   }
 
   void _bindPlayerStreams() {
