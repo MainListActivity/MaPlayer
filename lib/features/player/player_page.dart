@@ -108,11 +108,13 @@ class _PlayerPageState extends State<PlayerPage> {
       final posMs = _playerController.player.state.position.inMilliseconds;
       if (posMs > 0) {
         final disposeAtMs = DateTime.now().millisecondsSinceEpoch;
-        unawaited(_savePlaybackPosition(
-          shareUrl: prepared.request.shareUrl,
-          positionMs: posMs,
-          disposeAtMs: disposeAtMs,
-        ));
+        unawaited(
+          _savePlaybackPosition(
+            shareUrl: prepared.request.shareUrl,
+            positionMs: posMs,
+            disposeAtMs: disposeAtMs,
+          ),
+        );
       }
     }
     _playerController.dispose();
@@ -532,8 +534,7 @@ class _PlayerPageState extends State<PlayerPage> {
         if (mounted && duration > Duration.zero) {
           await _playerController.player.seek(
             Duration(
-              milliseconds:
-                  currentPositionMs.clamp(0, duration.inMilliseconds),
+              milliseconds: currentPositionMs.clamp(0, duration.inMilliseconds),
             ),
           );
         }
@@ -644,8 +645,10 @@ class _PlayerPageState extends State<PlayerPage> {
             prepared.request.shareUrl,
           );
           final posMs = history?.lastPositionMs ?? 0;
-          if (posMs > 0 && history?.lastEpisodeFileId == currentEpisode.file.fid) {
-            final duration = _playerController.player.state.duration > Duration.zero
+          if (posMs > 0 &&
+              history?.lastEpisodeFileId == currentEpisode.file.fid) {
+            final duration =
+                _playerController.player.state.duration > Duration.zero
                 ? _playerController.player.state.duration
                 : await _waitForDuration();
             if (!mounted) return;
@@ -1513,7 +1516,9 @@ class _PlayerPageState extends State<PlayerPage> {
                             color: Color(0xFFFFB37A),
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
-                            shadows: [Shadow(color: Colors.black, blurRadius: 8)],
+                            shadows: [
+                              Shadow(color: Colors.black, blurRadius: 8),
+                            ],
                           ),
                         ),
                       ),
@@ -1524,152 +1529,179 @@ class _PlayerPageState extends State<PlayerPage> {
           ),
         ),
 
-      // ── Controls ───────────────────────────────────────────────
-      SliverToBoxAdapter(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          child: Row(
-            children: [
-              OutlinedButton.icon(
-                onPressed: _showResolutionPicker,
-                icon: const Icon(Icons.dns, size: 16, color: Color(0xFFF47B25)),
-                label: Text(
-                  _currentPlayingEpisode?.displayResolution ?? '线路1',
-                  style: const TextStyle(color: Colors.white, fontSize: 13),
+        // ── Controls ───────────────────────────────────────────────
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            child: Row(
+              children: [
+                OutlinedButton.icon(
+                  onPressed: _showResolutionPicker,
+                  icon: const Icon(
+                    Icons.dns,
+                    size: 16,
+                    color: Color(0xFFF47B25),
+                  ),
+                  label: Text(
+                    _currentPlayingEpisode?.displayResolution ?? '线路1',
+                    style: const TextStyle(color: Colors.white, fontSize: 13),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                    side: const BorderSide(color: Color(0xFF2E3B56)),
+                    backgroundColor: const Color(0xFF101622),
+                  ),
                 ),
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  side: const BorderSide(color: Color(0xFF2E3B56)),
-                  backgroundColor: const Color(0xFF101622),
+                const SizedBox(width: 8),
+                OutlinedButton.icon(
+                  onPressed: _currentMedia?.variants.isNotEmpty == true
+                      ? _showCloudResolutionPicker
+                      : null,
+                  icon: const Icon(
+                    Icons.high_quality_rounded,
+                    size: 16,
+                    color: Color(0xFFF47B25),
+                  ),
+                  label: Text(
+                    _currentCloudVariant != null
+                        ? _cloudResolutionLabel(_currentCloudVariant!)
+                        : '网盘清晰度',
+                    style: const TextStyle(color: Colors.white, fontSize: 13),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                    side: const BorderSide(color: Color(0xFF2E3B56)),
+                    backgroundColor: const Color(0xFF101622),
+                  ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              OutlinedButton.icon(
-                onPressed: _currentMedia?.variants.isNotEmpty == true
-                    ? _showCloudResolutionPicker
-                    : null,
-                icon: const Icon(
-                  Icons.high_quality_rounded,
-                  size: 16,
-                  color: Color(0xFFF47B25),
+                const Spacer(),
+                IconButton(
+                  icon: const Icon(
+                    Icons.favorite_border,
+                    color: Colors.white70,
+                    size: 20,
+                  ),
+                  onPressed: () {},
+                  tooltip: '加入收藏',
+                  constraints: const BoxConstraints(),
+                  padding: const EdgeInsets.all(6),
                 ),
-                label: Text(
-                  _currentCloudVariant != null
-                      ? _cloudResolutionLabel(_currentCloudVariant!)
-                      : '网盘清晰度',
-                  style: const TextStyle(color: Colors.white, fontSize: 13),
+                IconButton(
+                  icon: const Icon(
+                    Icons.share,
+                    color: Colors.white70,
+                    size: 20,
+                  ),
+                  onPressed: () {},
+                  tooltip: '分享',
+                  constraints: const BoxConstraints(),
+                  padding: const EdgeInsets.all(6),
                 ),
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  side: const BorderSide(color: Color(0xFF2E3B56)),
-                  backgroundColor: const Color(0xFF101622),
-                ),
-              ),
-              const Spacer(),
-              IconButton(
-                icon: const Icon(Icons.favorite_border, color: Colors.white70, size: 20),
-                onPressed: () {},
-                tooltip: '加入收藏',
-                constraints: const BoxConstraints(),
-                padding: const EdgeInsets.all(6),
-              ),
-              IconButton(
-                icon: const Icon(Icons.share, color: Colors.white70, size: 20),
-                onPressed: () {},
-                tooltip: '分享',
-                constraints: const BoxConstraints(),
-                padding: const EdgeInsets.all(6),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
-      ),
-      // ── Episode grid ───────────────────────────────────────────
-      SliverToBoxAdapter(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Divider(color: Color(0xFF232F48)),
-              const SizedBox(height: 8),
-              const Text(
-                '剧集列表',
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
+        // ── Episode grid ───────────────────────────────────────────
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Divider(color: Color(0xFF232F48)),
+                const SizedBox(height: 8),
+                const Text(
+                  '剧集列表',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 12),
-              if (_groupKeys.isEmpty)
-                const Center(
-                  child: Padding(
-                    padding: EdgeInsets.symmetric(vertical: 24),
-                    child: Text('未找到剧集', style: TextStyle(color: Colors.white70)),
-                  ),
-                )
-              else
-                GridView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 4,
-                    mainAxisSpacing: 8,
-                    crossAxisSpacing: 8,
-                    childAspectRatio: 1,
-                  ),
-                  itemCount: _groupKeys.length,
-                  itemBuilder: (context, index) {
-                    final key = _groupKeys[index];
-                    final isPlaying = key == _currentGroupKey;
-                    final episodesInGroup = _groupedEpisodes[key] ?? [];
-                    final baseEpisode = episodesInGroup.firstOrNull;
-
-                    return InkWell(
-                      onTap: () {
-                        final prepared = _preparedSelection;
-                        if (prepared == null) return;
-                        if (episodesInGroup.isNotEmpty && !isPlaying) {
-                          _playParsedEpisode(prepared, episodesInGroup.first);
-                        }
-                      },
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: isPlaying
-                              ? const Color(0xFFF47B25)
-                              : const Color(0xFF1A2332),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(
-                            color: isPlaying
-                                ? Colors.transparent
-                                : const Color(0xFF2E3B56),
-                          ),
+                const SizedBox(height: 12),
+                if (_groupKeys.isEmpty)
+                  const Center(
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(vertical: 24),
+                      child: Text(
+                        '未找到剧集',
+                        style: TextStyle(color: Colors.white70),
+                      ),
+                    ),
+                  )
+                else
+                  GridView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 4,
+                          mainAxisSpacing: 8,
+                          crossAxisSpacing: 8,
+                          childAspectRatio: 1,
                         ),
-                        alignment: Alignment.center,
-                        child: isPlaying
-                            ? const Icon(Icons.equalizer, color: Colors.white, size: 20)
-                            : FittedBox(
-                                child: Padding(
-                                  padding: const EdgeInsets.all(4.0),
-                                  child: Text(
-                                    baseEpisode?.displayTitle ?? '${index + 1}',
-                                    style: const TextStyle(
-                                      color: Colors.white70,
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 12,
+                    itemCount: _groupKeys.length,
+                    itemBuilder: (context, index) {
+                      final key = _groupKeys[index];
+                      final isPlaying = key == _currentGroupKey;
+                      final episodesInGroup = _groupedEpisodes[key] ?? [];
+                      final baseEpisode = episodesInGroup.firstOrNull;
+
+                      return InkWell(
+                        onTap: () {
+                          final prepared = _preparedSelection;
+                          if (prepared == null) return;
+                          if (episodesInGroup.isNotEmpty && !isPlaying) {
+                            _playParsedEpisode(prepared, episodesInGroup.first);
+                          }
+                        },
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: isPlaying
+                                ? const Color(0xFFF47B25)
+                                : const Color(0xFF1A2332),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: isPlaying
+                                  ? Colors.transparent
+                                  : const Color(0xFF2E3B56),
+                            ),
+                          ),
+                          alignment: Alignment.center,
+                          child: isPlaying
+                              ? const Icon(
+                                  Icons.equalizer,
+                                  color: Colors.white,
+                                  size: 20,
+                                )
+                              : FittedBox(
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(4.0),
+                                    child: Text(
+                                      baseEpisode?.displayTitle ??
+                                          '${index + 1}',
+                                      style: const TextStyle(
+                                        color: Colors.white70,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 12,
+                                      ),
                                     ),
                                   ),
                                 ),
-                              ),
-                      ),
-                    );
-                  },
-                ),
-            ],
+                        ),
+                      );
+                    },
+                  ),
+              ],
+            ),
           ),
         ),
-      ),
       ],
     );
   }
