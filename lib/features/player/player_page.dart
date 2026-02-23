@@ -505,6 +505,10 @@ class _PlayerPageState extends State<PlayerPage> {
   Future<void> _switchCloudResolution(QuarkPlayableVariant variant) async {
     final media = _currentMedia;
     if (media == null) return;
+    // Capture current position before opening new media, so we can restore it
+    // after the switch (instead of seeking to the historically saved position).
+    final currentPositionMs =
+        _playerController.player.state.position.inMilliseconds;
     setState(() {
       _isLoading = true;
       _currentCloudVariant = variant;
@@ -520,6 +524,20 @@ class _PlayerPageState extends State<PlayerPage> {
           selectedVariant: variant,
         ),
       );
+      // Restore the live position after switching resolution.
+      if (mounted && currentPositionMs > 0) {
+        final duration = _playerController.player.state.duration > Duration.zero
+            ? _playerController.player.state.duration
+            : await _waitForDuration();
+        if (mounted && duration > Duration.zero) {
+          await _playerController.player.seek(
+            Duration(
+              milliseconds:
+                  currentPositionMs.clamp(0, duration.inMilliseconds),
+            ),
+          );
+        }
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() {

@@ -116,6 +116,7 @@ class SharePlayOrchestrator {
         showFolderId: history?.showFolderId,
         lastEpisodeFileId: history?.lastEpisodeFileId,
         lastEpisodeName: history?.lastEpisodeName,
+        lastPositionMs: history?.lastPositionMs,
         cachedEpisodes: shareEpisodes
             .map(
               (e) => PlayHistoryEpisode(
