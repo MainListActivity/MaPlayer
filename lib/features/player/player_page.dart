@@ -1480,6 +1480,10 @@ class _PlayerPageState extends State<PlayerPage> {
     );
   }
 
+  Widget _buildPortraitBody() {
+    return const Center(child: Text('portrait', style: TextStyle(color: Colors.white)));
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
@@ -1528,6 +1532,16 @@ class _PlayerPageState extends State<PlayerPage> {
             ],
           ),
         ),
+      );
+    }
+
+    final size = MediaQuery.of(context).size;
+    final isPortrait = size.width < size.height && size.width < 600;
+
+    if (isPortrait) {
+      return Scaffold(
+        backgroundColor: const Color(0xFF101622),
+        body: SafeArea(child: _buildPortraitBody()),
       );
     }
 
