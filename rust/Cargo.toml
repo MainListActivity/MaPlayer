@@ -25,3 +25,5 @@ anyhow = "1"
 [dev-dependencies]
 tempfile = "3"
 tokio = { version = "1", features = ["full", "test-util"] }
+reqwest = { version = "0.12", features = ["stream"] }
+axum = "0.8"
