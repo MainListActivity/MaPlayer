@@ -96,7 +96,7 @@ impl SeekState {
 
 pub struct ProxySession {
     pub session_id: String,
-    source: Arc<HttpSource>,
+    http_source: Arc<HttpSource>,
     cache: Arc<DiskCache>,
     downloader: Arc<Downloader>,
     stats: Arc<StatsCollector>,
@@ -117,10 +117,10 @@ impl ProxySession {
         chunk_size: u64,
         max_concurrency: u32,
     ) -> Result<Self> {
-        let source = Arc::new(HttpSource::new(url, headers));
+        let http_source = Arc::new(HttpSource::new(url, headers));
 
         // Probe the source to get content info.
-        let info = source.probe().await?;
+        let info = http_source.probe().await?;
         if info.content_length == 0 {
             return Err(anyhow!("source content_length is 0"));
         }
@@ -132,6 +132,11 @@ impl ProxySession {
             "session {} probed: {} bytes, type={}",
             session_id, info.content_length, info.content_type
         );
+
+        // Auto-detect ISO/UDF and potentially wrap the source.
+        let source: Arc<dyn MediaSource> = crate::source::iso_source::wrap_if_iso(
+            http_source.clone() as Arc<dyn MediaSource>,
+        ).await?;
 
         let cache = Arc::new(DiskCache::new(
             Path::new(cache_dir),
@@ -151,7 +156,7 @@ impl ProxySession {
 
         let session = Self {
             session_id,
-            source: source.clone(),
+            http_source: http_source.clone(),
             cache: cache.clone(),
             downloader: downloader.clone(),
             stats: stats.clone(),
@@ -293,7 +298,7 @@ impl ProxySession {
 
     /// Update authentication credentials (new URL / headers from token refresh).
     pub fn update_auth(&self, new_url: String, new_headers: HashMap<String, String>) {
-        self.source.update_auth(new_url, new_headers);
+        self.http_source.update_auth(new_url, new_headers);
     }
 
     /// Get the content type of the source.
