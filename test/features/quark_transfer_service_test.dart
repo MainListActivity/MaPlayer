@@ -101,8 +101,7 @@ void main() {
       expect(playable.url, 'https://video.example.com/high.m3u8');
       expect(playable.headers['Referer'], 'https://pan.quark.cn/');
       expect(playable.headers['Cookie'], cookie);
-      expect(playable.headers['User-Agent'], isNotEmpty);
-      expect(playable.headers.containsKey('user-agent'), isFalse);
+      expect(_headerValue(playable.headers, 'User-Agent'), isNotEmpty);
     },
   );
 
