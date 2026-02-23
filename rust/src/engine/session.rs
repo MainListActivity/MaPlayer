@@ -132,6 +132,7 @@ impl ProxySession {
             "session {} probed: {} bytes, type={}",
             session_id, info.content_length, info.content_type
         );
+        let effective_concurrency = http_source.effective_concurrency(max_concurrency).await;
 
         // Auto-detect ISO/UDF and potentially wrap the source.
         let source: Arc<dyn MediaSource> =
@@ -150,9 +151,13 @@ impl ProxySession {
         let downloader = Arc::new(Downloader::new(
             source.clone(),
             cache.clone(),
-            max_concurrency,
+            effective_concurrency,
             stats.clone(),
         ));
+        info!(
+            "session {} downloader concurrency configured={} effective={}",
+            session_id, max_concurrency, effective_concurrency
+        );
 
         let session = Self {
             session_id,

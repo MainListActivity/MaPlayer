@@ -15,7 +15,7 @@ use parking_lot::RwLock;
 use tokio::net::TcpListener;
 use tracing::{debug, error};
 
-use crate::config::{MAX_OPEN_ENDED_RESPONSE_BYTES, STARTUP_PROBE_CLAMP_BYTES};
+use crate::config::STARTUP_PROBE_CLAMP_BYTES;
 use crate::engine::session::ProxySession;
 
 pub type SessionMap = Arc<RwLock<HashMap<String, Arc<ProxySession>>>>;
@@ -178,13 +178,10 @@ async fn stream_handler(
                 )
                     .into_response();
             }
-            // Open-ended ranges are common for startup (bytes=0-). For startup
-            // keep response small to avoid waiting for tens of MB before first byte.
-            let clamp_bytes = if start == 0 {
-                STARTUP_PROBE_CLAMP_BYTES
-            } else {
-                MAX_OPEN_ENDED_RESPONSE_BYTES
-            };
+            // Many players use open-ended ranges for both startup and seeking.
+            // Keep every open-ended response small, otherwise we may wait for a
+            // huge cached window (e.g. 64MB) before writing first byte.
+            let clamp_bytes = STARTUP_PROBE_CLAMP_BYTES;
             let end = (start + clamp_bytes).min(total);
             (start, end, true)
         }
