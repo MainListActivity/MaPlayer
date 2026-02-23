@@ -15,6 +15,9 @@ void main() {
         title: 'A',
         coverUrl: '',
         coverHeaders: <String, String>{'Referer': 'https://www.wogg.net/x'},
+        year: '2021',
+        rating: '7.9',
+        category: '剧情',
         intro: '',
         showDirName: 'A',
         updatedAtEpochMs: 1,
@@ -28,6 +31,9 @@ void main() {
         title: 'A-2',
         coverUrl: 'https://img.wogg.net/new-cover.jpg',
         coverHeaders: <String, String>{'Referer': 'https://www.wogg.net/v/1'},
+        year: '2023',
+        rating: '8.3',
+        category: '科幻',
         intro: '',
         showDirName: 'A',
         updatedAtEpochMs: 2,
@@ -58,6 +64,9 @@ void main() {
     expect(a?.coverUrl, 'https://img.wogg.net/new-cover.jpg');
     expect(a?.lastEpisodeFileId, 'f1');
     expect(a?.coverHeaders['Referer'], 'https://www.wogg.net/v/1');
+    expect(a?.year, '2023');
+    expect(a?.rating, '8.3');
+    expect(a?.category, '科幻');
   });
 
   test('migrates bare doubanio.com cover URLs to Baidu proxy on load', () async {
@@ -75,6 +84,9 @@ void main() {
         pageUrl: 'https://example.com/movie',
         title: 'Movie',
         coverUrl: doubanUrl,
+        year: '2024',
+        rating: '8.1',
+        category: '悬疑',
         intro: '',
         showDirName: 'Movie',
         updatedAtEpochMs: 1,
@@ -90,5 +102,33 @@ void main() {
     // Second load should return same value (idempotent).
     final item2 = await repo.findByShareUrl('https://pan.quark.cn/s/c');
     expect(item2?.coverUrl, expectedUrl);
+    expect(item2?.year, '2024');
+    expect(item2?.rating, '8.1');
+    expect(item2?.category, '悬疑');
+  });
+
+  test('backward compatible when metadata fields are missing', () async {
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      'play_history_v1': '''
+[
+  {
+    "shareUrl":"https://pan.quark.cn/s/legacy",
+    "pageUrl":"https://example.com/legacy",
+    "title":"Legacy",
+    "coverUrl":"",
+    "intro":"",
+    "showDirName":"Legacy",
+    "updatedAtEpochMs":1
+  }
+]
+''',
+    });
+
+    final repo = PlayHistoryRepository();
+    final item = await repo.findByShareUrl('https://pan.quark.cn/s/legacy');
+    expect(item, isNotNull);
+    expect(item?.year, '');
+    expect(item?.rating, '');
+    expect(item?.category, '');
   });
 }

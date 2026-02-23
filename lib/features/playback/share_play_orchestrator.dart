@@ -13,6 +13,9 @@ class SharePlayRequest {
     required this.title,
     this.coverUrl,
     this.coverHeaders,
+    this.year,
+    this.rating,
+    this.category,
     this.intro,
   });
 
@@ -21,6 +24,9 @@ class SharePlayRequest {
   final String title;
   final String? coverUrl;
   final Map<String, String>? coverHeaders;
+  final String? year;
+  final String? rating;
+  final String? category;
   final String? intro;
 }
 
@@ -111,6 +117,9 @@ class SharePlayOrchestrator {
         title: mergedRequest.title,
         coverUrl: mergedRequest.coverUrl ?? '',
         coverHeaders: mergedRequest.coverHeaders ?? const <String, String>{},
+        year: mergedRequest.year ?? '',
+        rating: mergedRequest.rating ?? '',
+        category: mergedRequest.category ?? '',
         intro: mergedRequest.intro ?? '',
         showDirName: showDirName,
         showFolderId: history?.showFolderId,
@@ -221,6 +230,9 @@ class SharePlayOrchestrator {
         title: mergedRequest.title,
         coverUrl: mergedRequest.coverUrl ?? '',
         coverHeaders: mergedRequest.coverHeaders ?? const <String, String>{},
+        year: mergedRequest.year ?? '',
+        rating: mergedRequest.rating ?? '',
+        category: mergedRequest.category ?? '',
         intro: mergedRequest.intro ?? '',
         showDirName: prepared.showDirName,
         showFolderId: folder.folderId,
@@ -365,6 +377,12 @@ class SharePlayOrchestrator {
     );
     final mergedTitle = _preferNonEmpty(request.title, history?.title ?? '');
     final mergedIntro = _preferNonEmpty(request.intro, history?.intro ?? '');
+    final mergedYear = _preferNonEmpty(request.year, history?.year ?? '');
+    final mergedRating = _preferNonEmpty(request.rating, history?.rating ?? '');
+    final mergedCategory = _preferNonEmpty(
+      request.category,
+      history?.category ?? '',
+    );
     final mergedCoverUrl = _preferNonEmpty(
       request.coverUrl,
       history?.coverUrl ?? '',
@@ -381,10 +399,15 @@ class SharePlayOrchestrator {
       shareUrl: request.shareUrl,
       pageUrl: mergedPageUrl,
       title: mergedTitle.isEmpty ? request.title : mergedTitle,
-      coverUrl: normalizedCover.coverUrl.isEmpty ? null : normalizedCover.coverUrl,
+      coverUrl: normalizedCover.coverUrl.isEmpty
+          ? null
+          : normalizedCover.coverUrl,
       coverHeaders: normalizedCover.coverHeaders.isEmpty
           ? null
           : normalizedCover.coverHeaders,
+      year: mergedYear.isEmpty ? null : mergedYear,
+      rating: mergedRating.isEmpty ? null : mergedRating,
+      category: mergedCategory.isEmpty ? null : mergedCategory,
       intro: mergedIntro.isEmpty ? null : mergedIntro,
     );
   }
