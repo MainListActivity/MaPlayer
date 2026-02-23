@@ -123,13 +123,22 @@ class AppShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isWideScreen = MediaQuery.of(context).size.width >= 600;
+
+    if (isWideScreen) {
+      return Scaffold(
+        body: Row(
+          children: [
+            _buildSidebar(context),
+            Expanded(child: child),
+          ],
+        ),
+      );
+    }
+
     return Scaffold(
-      body: Row(
-        children: [
-          _buildSidebar(context),
-          Expanded(child: child),
-        ],
-      ),
+      bottomNavigationBar: _buildBottomNav(context),
+      body: child,
     );
   }
 }
