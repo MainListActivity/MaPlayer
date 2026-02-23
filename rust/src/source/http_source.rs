@@ -6,6 +6,7 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use parking_lot::RwLock;
 use reqwest::{Client, RequestBuilder};
+use tracing::{debug, warn};
 
 use super::traits::{MediaSource, SourceInfo};
 
@@ -26,8 +27,12 @@ impl HttpSource {
 
     /// Update the URL and headers (e.g. after token refresh).
     pub fn update_auth(&self, new_url: String, new_headers: HashMap<String, String>) {
-        *self.url.write() = new_url;
-        *self.headers.write() = new_headers;
+        if !new_url.trim().is_empty() {
+            *self.url.write() = new_url;
+        }
+        if !new_headers.is_empty() {
+            *self.headers.write() = new_headers;
+        }
     }
 
     /// Build a GET request with the current URL, custom headers, and an optional Range header.
@@ -49,16 +54,16 @@ impl HttpSource {
 #[async_trait]
 impl MediaSource for HttpSource {
     async fn probe(&self) -> Result<SourceInfo> {
-        let resp = self
-            .build_request(Some("bytes=0-0"))
-            .send()
-            .await?;
+        let resp = self.build_request(Some("bytes=0-0")).send().await?;
 
         let status = resp.status();
+        debug!("http probe status={}", status.as_u16());
         if status.as_u16() == 401 || status.as_u16() == 403 || status.as_u16() == 412 {
+            warn!("http probe auth rejected status={}", status.as_u16());
             return Err(anyhow!("auth_rejected: HTTP {}", status.as_u16()));
         }
         if !status.is_success() {
+            warn!("http probe failed status={}", status.as_u16());
             return Err(anyhow!("probe failed: HTTP {}", status.as_u16()));
         }
 
@@ -95,16 +100,23 @@ impl MediaSource for HttpSource {
 
     async fn fetch_range(&self, start: u64, end: u64) -> Result<Bytes> {
         let range = format!("bytes={}-{}", start, end);
-        let resp = self
-            .build_request(Some(&range))
-            .send()
-            .await?;
+        let resp = self.build_request(Some(&range)).send().await?;
 
         let status = resp.status();
         if status.as_u16() == 401 || status.as_u16() == 403 || status.as_u16() == 412 {
+            warn!(
+                "http fetch auth rejected status={} range={}",
+                status.as_u16(),
+                range
+            );
             return Err(anyhow!("auth_rejected: HTTP {}", status.as_u16()));
         }
         if !status.is_success() {
+            warn!(
+                "http fetch failed status={} range={}",
+                status.as_u16(),
+                range
+            );
             return Err(anyhow!("fetch_range failed: HTTP {}", status.as_u16()));
         }
 

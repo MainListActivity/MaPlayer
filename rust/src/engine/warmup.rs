@@ -1,6 +1,6 @@
-use anyhow::Result;
 use crate::detect::container::{detect_container, find_moov_box, ContainerFormat};
 use crate::source::traits::MediaSource;
+use anyhow::Result;
 
 /// Determine which byte ranges to prefetch for fast playback start.
 /// Returns a list of (start, end) inclusive ranges.

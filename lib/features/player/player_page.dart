@@ -69,6 +69,8 @@ class _PlayerPageState extends State<PlayerPage> {
   String _bufferAheadLabel = '预读: --';
   String _proxyModeLabel = '';
 
+  void _log(String message) => debugPrint('[PlayerPage] $message');
+
   @override
   void initState() {
     super.initState();
@@ -158,10 +160,14 @@ class _PlayerPageState extends State<PlayerPage> {
     });
     _playerLogSub = player.stream.log.listen((event) {
       final message = '${event.prefix} ${event.text}'.trim();
+      if (message.isNotEmpty) {
+        _log('media_kit log: $message');
+      }
       if (!_isAuthRejectedHttpMessage(message)) return;
       unawaited(_handleMediaKitAuthRejected(message));
     });
     _playerErrorSub = player.stream.error.listen((message) {
+      _log('media_kit error: $message');
       if (!_isAuthRejectedHttpMessage(message)) return;
       unawaited(_handleMediaKitAuthRejected(message));
     });
@@ -600,6 +606,7 @@ class _PlayerPageState extends State<PlayerPage> {
     });
     try {
       final shouldUseProxy = _shouldUseProxy(media);
+      _log('open media shouldUseProxy=$shouldUseProxy url=${media.url}');
       final endpoint = shouldUseProxy
           ? await ProxyController.instance.createSession(
               media,
@@ -610,12 +617,18 @@ class _PlayerPageState extends State<PlayerPage> {
               originalMedia: media,
               playbackUrl: media.url,
             );
+      _log(
+        'resolved playback url=${endpoint.playbackUrl}, session=${endpoint.proxySession?.sessionId ?? "none"}',
+      );
       final prevSessionId = _proxySessionId;
       final currentSessionId = endpoint.proxySession?.sessionId;
       _proxySessionId = currentSessionId;
       // For URLs that bypass the proxy (m3u8, non-mp4), pass auth headers
       // directly to media_kit so it can authenticate with the CDN.
       final playHeaders = currentSessionId == null ? media.headers : null;
+      _log(
+        'player.open url=${endpoint.playbackUrl}, headers=${playHeaders?.length ?? 0}',
+      );
       await _playerController.open(endpoint.playbackUrl, headers: playHeaders);
       // Seek to restored playback position if available.
       final restoredBytes = currentSessionId != null
@@ -666,6 +679,7 @@ class _PlayerPageState extends State<PlayerPage> {
         unawaited(ProxyController.instance.closeSession(prevSessionId));
       }
     } catch (e) {
+      _log('open media failed: $e');
       if (!mounted) return;
       setState(() {
         _errorMessage = '播放失败: $e';

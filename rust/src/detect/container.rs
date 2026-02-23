@@ -1,5 +1,5 @@
-use anyhow::Result;
 use crate::source::traits::MediaSource;
+use anyhow::Result;
 
 #[derive(Debug, PartialEq)]
 pub enum ContainerFormat {

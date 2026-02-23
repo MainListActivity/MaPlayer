@@ -126,7 +126,10 @@ impl Downloader {
         chunk_size: u64,
     ) -> Result<()> {
         // Acquire semaphore permit.
-        let _permit = semaphore.acquire().await.map_err(|e| anyhow::anyhow!("{}", e))?;
+        let _permit = semaphore
+            .acquire()
+            .await
+            .map_err(|e| anyhow::anyhow!("{}", e))?;
 
         stats.increment_workers();
 
@@ -180,7 +183,10 @@ impl Downloader {
                 Err(e) => {
                     let msg = e.to_string();
                     if msg.contains("auth_rejected") {
-                        warn!("chunk {} auth rejected, refreshing auth (attempt {})", chunk_index, attempt);
+                        warn!(
+                            "chunk {} auth rejected, refreshing auth (attempt {})",
+                            chunk_index, attempt
+                        );
                         if let Err(re) = source.refresh_auth().await {
                             warn!("refresh_auth failed: {}", re);
                         }
@@ -189,10 +195,19 @@ impl Downloader {
                     }
 
                     if attempt < max_retries {
-                        warn!("chunk {} fetch failed (attempt {}): {}", chunk_index, attempt, e);
-                        tokio::time::sleep(std::time::Duration::from_millis(500 * (attempt as u64 + 1))).await;
+                        warn!(
+                            "chunk {} fetch failed (attempt {}): {}",
+                            chunk_index, attempt, e
+                        );
+                        tokio::time::sleep(std::time::Duration::from_millis(
+                            500 * (attempt as u64 + 1),
+                        ))
+                        .await;
                     } else {
-                        warn!("chunk {} fetch failed after {} retries: {}", chunk_index, max_retries, e);
+                        warn!(
+                            "chunk {} fetch failed after {} retries: {}",
+                            chunk_index, max_retries, e
+                        );
                         return Err(e);
                     }
                 }

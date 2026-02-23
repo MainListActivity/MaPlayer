@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:ma_palyer/features/playback/playback_models.dart';
 import 'package:ma_palyer/features/player/proxy/proxy_models.dart';
 import 'package:ma_palyer/src/rust/api/proxy_api.dart' as rust;
@@ -21,6 +22,8 @@ class ProxyController {
   StreamController<ProxyAggregateStats>? _aggregateStatsController;
   Future<Map<String, String>?> Function()? _onSourceAuthRejected;
 
+  void _log(String message) => debugPrint('[ProxyController] $message');
+
   Future<void> _ensureEngine() async {
     if (_engineReady) return;
     final cacheDir = await getTemporaryDirectory();
@@ -28,6 +31,9 @@ class ProxyController {
     if (!proxyCache.existsSync()) {
       proxyCache.createSync(recursive: true);
     }
+    _log(
+      'init engine cacheDir=${proxyCache.path}, chunkSize=$_chunkSize, maxConcurrency=$_maxConcurrency',
+    );
     rust.initEngine(
       config: EngineConfig(
         chunkSize: BigInt.from(_chunkSize),
@@ -64,10 +70,16 @@ class ProxyController {
 
     _onSourceAuthRejected = onSourceAuthRejected;
 
+    _log(
+      'create session url=${media.url}, fileKeyPresent=${(fileKey ?? '').isNotEmpty}, headers=${media.headers.length}',
+    );
     final info = rust.createSession(
       url: media.url,
       headers: media.headers,
       fileKey: fileKey ?? '',
+    );
+    _log(
+      'session created id=${info.sessionId}, playbackUrl=${info.playbackUrl}, contentLength=${info.contentLength}',
     );
 
     _activeSessionId = info.sessionId;
@@ -94,8 +106,10 @@ class ProxyController {
   Future<void> closeSession(String sessionId) async {
     try {
       rust.closeSession(sessionId: sessionId);
-    } catch (_) {
+      _log('close session id=$sessionId');
+    } catch (e) {
       // Session may already be closed.
+      _log('close session ignored id=$sessionId error=$e');
     }
     if (_activeSessionId == sessionId) {
       _activeSessionId = null;
@@ -108,8 +122,10 @@ class ProxyController {
     try {
       rust.dispose();
       _engineReady = false;
-    } catch (_) {
+      _log('engine disposed');
+    } catch (e) {
       // Engine may not be initialized.
+      _log('engine dispose ignored error=$e');
     }
     _emitAggregateSnapshot();
   }
@@ -137,13 +153,15 @@ class ProxyController {
     final sid = _activeSessionId;
     if (sid != null) {
       try {
+        _log('refresh auth for session=$sid, headers=${newHeaders.length}');
         rust.updateSessionAuth(
           sessionId: sid,
           newUrl: '', // URL unchanged, only headers refresh
           newHeaders: newHeaders,
         );
-      } catch (_) {
+      } catch (e) {
         // Session may have been closed.
+        _log('refresh auth ignored id=$sid error=$e');
       }
     }
     return newHeaders;
@@ -171,33 +189,40 @@ class ProxyController {
     if (controller.isClosed) return;
 
     if (!_engineReady || _activeSessionId == null) {
-      controller.add(ProxyAggregateStats(
-        proxyRunning: _engineReady,
-        downloadBps: 0,
-        bufferedBytesAhead: 0,
-        activeWorkers: 0,
-        updatedAt: DateTime.now(),
-      ));
+      controller.add(
+        ProxyAggregateStats(
+          proxyRunning: _engineReady,
+          downloadBps: 0,
+          bufferedBytesAhead: 0,
+          activeWorkers: 0,
+          updatedAt: DateTime.now(),
+        ),
+      );
       return;
     }
 
     try {
       final stats = rust.getStats();
-      controller.add(ProxyAggregateStats(
-        proxyRunning: true,
-        downloadBps: stats.downloadBps.toDouble(),
-        bufferedBytesAhead: stats.bufferedBytesAhead.toInt(),
-        activeWorkers: stats.activeWorkers,
-        updatedAt: DateTime.now(),
-      ));
-    } catch (_) {
-      controller.add(ProxyAggregateStats(
-        proxyRunning: _engineReady,
-        downloadBps: 0,
-        bufferedBytesAhead: 0,
-        activeWorkers: 0,
-        updatedAt: DateTime.now(),
-      ));
+      controller.add(
+        ProxyAggregateStats(
+          proxyRunning: true,
+          downloadBps: stats.downloadBps.toDouble(),
+          bufferedBytesAhead: stats.bufferedBytesAhead.toInt(),
+          activeWorkers: stats.activeWorkers,
+          updatedAt: DateTime.now(),
+        ),
+      );
+    } catch (e) {
+      _log('getStats failed, emitting zero snapshot error=$e');
+      controller.add(
+        ProxyAggregateStats(
+          proxyRunning: _engineReady,
+          downloadBps: 0,
+          bufferedBytesAhead: 0,
+          activeWorkers: 0,
+          updatedAt: DateTime.now(),
+        ),
+      );
     }
   }
 

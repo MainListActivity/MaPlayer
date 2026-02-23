@@ -171,8 +171,10 @@ impl DiskCache {
         }
 
         // Bytes remaining in the first (current) chunk.
-        let first_chunk_end =
-            std::cmp::min((chunk_index as u64 + 1) * self.chunk_size, self.content_length);
+        let first_chunk_end = std::cmp::min(
+            (chunk_index as u64 + 1) * self.chunk_size,
+            self.content_length,
+        );
         let mut buffered = first_chunk_end - playback_offset;
 
         // Walk forward through contiguous cached chunks.

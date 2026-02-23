@@ -6,7 +6,7 @@ use std::sync::Arc;
 use anyhow::{anyhow, Result};
 use parking_lot::Mutex;
 use tokio::runtime::Runtime;
-use tracing::info;
+use tracing::{debug, info, warn};
 
 use crate::config::EngineConfig;
 use crate::engine::session::ProxySession;
@@ -87,6 +87,7 @@ fn compute_session_id(url: &str, file_key: &str) -> String {
 pub fn init_engine(config: EngineConfig) -> Result<()> {
     let mut guard = ENGINE.lock();
     if guard.is_some() {
+        debug!("init_engine ignored: already initialized");
         return Ok(());
     }
 
@@ -127,11 +128,19 @@ pub fn create_session(
     file_key: String,
 ) -> Result<SessionInfo> {
     let session_id = compute_session_id(&url, &file_key);
+    info!(
+        "create_session id={} file_key_present={} headers={}",
+        session_id,
+        !file_key.is_empty(),
+        headers.len()
+    );
 
     // Extract what we need from the engine while holding the lock briefly.
     let (runtime, sessions, config, port) = {
         let guard = ENGINE.lock();
-        let engine = guard.as_ref().ok_or_else(|| anyhow!("engine not initialized"))?;
+        let engine = guard
+            .as_ref()
+            .ok_or_else(|| anyhow!("engine not initialized"))?;
         let port = engine
             .server
             .as_ref()
@@ -150,6 +159,7 @@ pub fn create_session(
         let map = sessions.read();
         if let Some(session) = map.get(&session_id) {
             let playback_url = format!("http://127.0.0.1:{}/stream/{}", port, session_id);
+            debug!("reuse existing session id={}", session_id);
             return Ok(SessionInfo {
                 session_id,
                 playback_url,
@@ -162,21 +172,32 @@ pub fn create_session(
     // Clear old sessions before creating a new one.
     {
         let mut map = sessions.write();
+        if !map.is_empty() {
+            warn!(
+                "clearing {} previous session(s) before new session",
+                map.len()
+            );
+        }
         map.clear();
     }
 
     // Create the new session (async, outside any engine lock).
-    let session = runtime.block_on(async {
-        ProxySession::new(
-            session_id.clone(),
-            url,
-            headers,
-            &config.cache_dir,
-            config.chunk_size,
-            config.max_concurrency,
-        )
-        .await
-    })?;
+    let session = runtime
+        .block_on(async {
+            ProxySession::new(
+                session_id.clone(),
+                url,
+                headers,
+                &config.cache_dir,
+                config.chunk_size,
+                config.max_concurrency,
+            )
+            .await
+        })
+        .map_err(|e| {
+            warn!("create_session failed id={} error={}", session_id, e);
+            e
+        })?;
 
     let content_length = session.content_length();
     let content_type = session.content_type().to_string();
@@ -201,12 +222,15 @@ pub fn create_session(
 pub fn close_session(session_id: String) -> Result<()> {
     let sessions = {
         let guard = ENGINE.lock();
-        let engine = guard.as_ref().ok_or_else(|| anyhow!("engine not initialized"))?;
+        let engine = guard
+            .as_ref()
+            .ok_or_else(|| anyhow!("engine not initialized"))?;
         engine.sessions.clone()
     };
 
     let mut map = sessions.write();
     map.remove(&session_id);
+    debug!("close_session id={}", session_id);
     Ok(())
 }
 
@@ -218,7 +242,9 @@ pub fn close_session(session_id: String) -> Result<()> {
 pub fn get_stats(session_id: Option<String>) -> Result<ProxyStats> {
     let sessions = {
         let guard = ENGINE.lock();
-        let engine = guard.as_ref().ok_or_else(|| anyhow!("engine not initialized"))?;
+        let engine = guard
+            .as_ref()
+            .ok_or_else(|| anyhow!("engine not initialized"))?;
         engine.sessions.clone()
     };
 
@@ -263,7 +289,9 @@ pub fn update_session_auth(
 ) -> Result<()> {
     let sessions = {
         let guard = ENGINE.lock();
-        let engine = guard.as_ref().ok_or_else(|| anyhow!("engine not initialized"))?;
+        let engine = guard
+            .as_ref()
+            .ok_or_else(|| anyhow!("engine not initialized"))?;
         engine.sessions.clone()
     };
 
@@ -272,6 +300,12 @@ pub fn update_session_auth(
         .get(&session_id)
         .ok_or_else(|| anyhow!("session not found: {}", session_id))?;
 
+    info!(
+        "update_session_auth id={} new_url_supplied={} new_headers={}",
+        session_id,
+        !new_url.trim().is_empty(),
+        new_headers.len()
+    );
     session.update_auth(new_url, new_headers);
     Ok(())
 }

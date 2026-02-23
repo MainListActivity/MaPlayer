@@ -46,7 +46,8 @@ impl StatsCollector {
     }
 
     pub fn record_downloaded(&self, bytes: u64) {
-        self.download_bytes_total.fetch_add(bytes, Ordering::Relaxed);
+        self.download_bytes_total
+            .fetch_add(bytes, Ordering::Relaxed);
     }
 
     pub fn record_served(&self, bytes: u64) {

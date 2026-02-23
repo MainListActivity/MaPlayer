@@ -38,11 +38,7 @@ async fn fake_upstream_handler(req: Request) -> impl IntoResponse {
         // Parse "bytes=start-end"
         if let Some(rest) = range_val.strip_prefix("bytes=") {
             let mut parts = rest.splitn(2, '-');
-            let start: u64 = parts
-                .next()
-                .unwrap_or("0")
-                .parse()
-                .unwrap_or(0);
+            let start: u64 = parts.next().unwrap_or("0").parse().unwrap_or(0);
             let end_str = parts.next().unwrap_or("");
             let end: u64 = if end_str.is_empty() {
                 total - 1
@@ -138,11 +134,7 @@ async fn test_proxy_server() {
     assert_eq!(&body[..], &expected[0..1024]);
 
     // Test HEAD request.
-    let head_resp = client
-        .head(&stream_url)
-        .send()
-        .await
-        .unwrap();
+    let head_resp = client.head(&stream_url).send().await.unwrap();
     assert_eq!(head_resp.status(), 200);
     assert!(head_resp.headers().contains_key("accept-ranges"));
 

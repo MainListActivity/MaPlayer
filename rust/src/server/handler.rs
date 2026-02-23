@@ -15,7 +15,7 @@ use parking_lot::RwLock;
 use tokio::net::TcpListener;
 use tracing::{debug, error};
 
-use crate::config::MAX_OPEN_ENDED_RESPONSE_BYTES;
+use crate::config::{MAX_OPEN_ENDED_RESPONSE_BYTES, STARTUP_PROBE_CLAMP_BYTES};
 use crate::engine::session::ProxySession;
 
 pub type SessionMap = Arc<RwLock<HashMap<String, Arc<ProxySession>>>>;
@@ -35,7 +35,10 @@ impl ProxyServer {
         let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
 
         let app = Router::new()
-            .route("/stream/{session_id}", get(stream_handler).head(head_handler))
+            .route(
+                "/stream/{session_id}",
+                get(stream_handler).head(head_handler),
+            )
             .with_state(sessions.clone());
 
         tokio::spawn(async move {
@@ -77,22 +80,47 @@ impl ProxyServer {
     }
 }
 
-/// Parse a Range header value like "bytes=start-end" or "bytes=start-".
-/// Returns (start, Some(end)) or (start, None).
-fn parse_range_header(value: &str) -> Option<(u64, Option<u64>)> {
+#[derive(Debug, PartialEq, Eq)]
+enum ParsedRange {
+    StartEnd {
+        start: u64,
+        end_inclusive: Option<u64>,
+    },
+    Suffix {
+        len: u64,
+    },
+}
+
+/// Parse a Range header value.
+/// Supports:
+/// - bytes=start-end
+/// - bytes=start-
+/// - bytes=-suffix_len
+fn parse_range_header(value: &str) -> Option<ParsedRange> {
     let value = value.trim();
     let rest = value.strip_prefix("bytes=")?;
     let mut parts = rest.splitn(2, '-');
     let start_str = parts.next()?.trim();
     let end_str = parts.next()?.trim();
 
-    let start: u64 = start_str.parse().ok()?;
-    let end = if end_str.is_empty() {
-        None
+    if start_str.is_empty() {
+        let len: u64 = end_str.parse().ok()?;
+        if len == 0 {
+            return None;
+        }
+        Some(ParsedRange::Suffix { len })
     } else {
-        Some(end_str.parse::<u64>().ok()?)
-    };
-    Some((start, end))
+        let start: u64 = start_str.parse().ok()?;
+        let end_inclusive = if end_str.is_empty() {
+            None
+        } else {
+            Some(end_str.parse::<u64>().ok()?)
+        };
+        Some(ParsedRange::StartEnd {
+            start,
+            end_inclusive,
+        })
+    }
 }
 
 /// GET /stream/{session_id} — serve content with Range support.
@@ -116,17 +144,19 @@ async fn stream_handler(
     let total = session.content_length();
     let content_type = session.content_type().to_string();
 
-    // Parse Range header.
     let range = headers
         .get(header::RANGE)
         .and_then(|v| v.to_str().ok())
         .and_then(parse_range_header);
 
     let (start, end, is_partial) = match range {
-        Some((start, Some(end))) => {
+        Some(ParsedRange::StartEnd {
+            start,
+            end_inclusive: Some(end),
+        }) => {
             // Inclusive end in HTTP Range → exclusive end for serve_range.
             let end = (end + 1).min(total);
-            if start >= total {
+            if start >= total || end <= start {
                 return (
                     StatusCode::RANGE_NOT_SATISFIABLE,
                     [(header::CONTENT_RANGE, format!("bytes */{}", total))],
@@ -136,7 +166,10 @@ async fn stream_handler(
             }
             (start, end, true)
         }
-        Some((start, None)) => {
+        Some(ParsedRange::StartEnd {
+            start,
+            end_inclusive: None,
+        }) => {
             if start >= total {
                 return (
                     StatusCode::RANGE_NOT_SATISFIABLE,
@@ -145,18 +178,30 @@ async fn stream_handler(
                 )
                     .into_response();
             }
-            // Open-ended: clamp to MAX_OPEN_ENDED_RESPONSE_BYTES.
-            let end = (start + MAX_OPEN_ENDED_RESPONSE_BYTES).min(total);
+            // Open-ended ranges are common for startup (bytes=0-). For startup
+            // keep response small to avoid waiting for tens of MB before first byte.
+            let clamp_bytes = if start == 0 {
+                STARTUP_PROBE_CLAMP_BYTES
+            } else {
+                MAX_OPEN_ENDED_RESPONSE_BYTES
+            };
+            let end = (start + clamp_bytes).min(total);
             (start, end, true)
+        }
+        Some(ParsedRange::Suffix { len }) => {
+            let start = total.saturating_sub(len);
+            (start, total, true)
         }
         None => {
-            // No Range header — serve entire file (clamped).
-            (0, total, false)
+            // Some players probe with non-range GET first; clamp to startup window
+            // so playback can start without waiting for the whole file download.
+            let end = STARTUP_PROBE_CLAMP_BYTES.min(total);
+            (0, end, end < total)
         }
     };
 
     debug!(
-        "stream session={} range=[{}, {}) partial={}",
+        "stream request session={} range=[{}, {}) partial={}",
         session_id, start, end, is_partial
     );
 
@@ -215,10 +260,7 @@ async fn head_handler(
 
     let mut resp_headers = HeaderMap::new();
     resp_headers.insert(header::CONTENT_TYPE, content_type.parse().unwrap());
-    resp_headers.insert(
-        header::CONTENT_LENGTH,
-        total.to_string().parse().unwrap(),
-    );
+    resp_headers.insert(header::CONTENT_LENGTH, total.to_string().parse().unwrap());
     resp_headers.insert(header::ACCEPT_RANGES, "bytes".parse().unwrap());
 
     // If Range header is present, include Content-Range.
@@ -227,10 +269,21 @@ async fn head_handler(
         .and_then(|v| v.to_str().ok())
         .and_then(parse_range_header)
     {
-        let (start, end_opt) = range_val;
-        let end = match end_opt {
-            Some(e) => (e + 1).min(total),
-            None => total,
+        let (start, end) = match range_val {
+            ParsedRange::StartEnd {
+                start,
+                end_inclusive,
+            } => {
+                let end = match end_inclusive {
+                    Some(e) => (e + 1).min(total),
+                    None => total,
+                };
+                (start, end)
+            }
+            ParsedRange::Suffix { len } => {
+                let start = total.saturating_sub(len);
+                (start, total)
+            }
         };
         let content_range = format!("bytes {}-{}/{}", start, end - 1, total);
         resp_headers.insert(header::CONTENT_RANGE, content_range.parse().unwrap());
@@ -246,13 +299,31 @@ mod tests {
     #[test]
     fn test_parse_range_header_full() {
         let result = parse_range_header("bytes=0-1023");
-        assert_eq!(result, Some((0, Some(1023))));
+        assert!(matches!(
+            result,
+            Some(ParsedRange::StartEnd {
+                start: 0,
+                end_inclusive: Some(1023)
+            })
+        ));
     }
 
     #[test]
     fn test_parse_range_header_open_ended() {
         let result = parse_range_header("bytes=500-");
-        assert_eq!(result, Some((500, None)));
+        assert!(matches!(
+            result,
+            Some(ParsedRange::StartEnd {
+                start: 500,
+                end_inclusive: None
+            })
+        ));
+    }
+
+    #[test]
+    fn test_parse_range_header_suffix() {
+        let result = parse_range_header("bytes=-1024");
+        assert!(matches!(result, Some(ParsedRange::Suffix { len: 1024 })));
     }
 
     #[test]

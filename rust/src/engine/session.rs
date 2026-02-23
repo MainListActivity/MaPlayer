@@ -134,9 +134,9 @@ impl ProxySession {
         );
 
         // Auto-detect ISO/UDF and potentially wrap the source.
-        let source: Arc<dyn MediaSource> = crate::source::iso_source::wrap_if_iso(
-            http_source.clone() as Arc<dyn MediaSource>,
-        ).await?;
+        let source: Arc<dyn MediaSource> =
+            crate::source::iso_source::wrap_if_iso(http_source.clone() as Arc<dyn MediaSource>)
+                .await?;
 
         let cache = Arc::new(DiskCache::new(
             Path::new(cache_dir),
@@ -178,7 +178,8 @@ impl ProxySession {
                 Ok(ranges) => {
                     for (range_start, range_end) in ranges {
                         let start_chunk = (range_start / cs) as usize;
-                        let end_chunk = ((range_end / cs) + 1).min(warmup_cache.total_chunks() as u64) as usize;
+                        let end_chunk =
+                            ((range_end / cs) + 1).min(warmup_cache.total_chunks() as u64) as usize;
                         warmup_downloader.prefetch_range(start_chunk, end_chunk);
                     }
                 }
@@ -193,6 +194,7 @@ impl ProxySession {
 
     /// Serve a byte range [start, end) to the player.
     pub async fn serve_range(&self, start: u64, end: u64) -> Result<Vec<u8>> {
+        let t0 = Instant::now();
         let end = end.min(self.info.content_length);
         if start >= end {
             return Err(anyhow!("invalid range: start={} end={}", start, end));
@@ -215,7 +217,8 @@ impl ProxySession {
             // Keep a window of chunks around the seek target.
             let window_chunks = 32usize; // ~64MB window with 2MB chunks
             let window_end = (start_chunk + window_chunks).min(self.cache.total_chunks());
-            self.downloader.abort_outside_window(start_chunk, window_end);
+            self.downloader
+                .abort_outside_window(start_chunk, window_end);
 
             let mut seek = self.seek_state.lock();
             seek.reset_warmup();
@@ -232,7 +235,21 @@ impl ProxySession {
                 cached_bytes += self.cache.chunk_len(i) as u64;
             }
         }
-        self.stats.record_request(range_len, cached_bytes.min(range_len));
+        self.stats
+            .record_request(range_len, cached_bytes.min(range_len));
+
+        // Prioritize the required playback window first. Do not flood the
+        // downloader queue with speculative prefetch before required chunks.
+        for i in first_chunk..=last_chunk {
+            self.downloader.start_prefetch(i);
+        }
+
+        // Wait for required chunks.
+        for i in first_chunk..=last_chunk {
+            if !self.downloader.wait_for_chunk(i).await {
+                return Err(anyhow!("failed to download chunk {}", i));
+            }
+        }
 
         // Schedule prefetch ahead based on estimated playback bitrate.
         let bps = {
@@ -246,15 +263,13 @@ impl ProxySession {
             self.chunk_size * 20
         };
         let prefetch_end_byte = (end + prefetch_bytes).min(self.info.content_length);
-        let prefetch_end_chunk = ((prefetch_end_byte + self.chunk_size - 1) / self.chunk_size) as usize;
+        let prefetch_end_chunk =
+            ((prefetch_end_byte + self.chunk_size - 1) / self.chunk_size) as usize;
         let prefetch_end_chunk = prefetch_end_chunk.min(self.cache.total_chunks());
-        self.downloader.prefetch_range(first_chunk, prefetch_end_chunk);
-
-        // Wait for required chunks.
-        for i in first_chunk..=last_chunk {
-            if !self.downloader.wait_for_chunk(i).await {
-                return Err(anyhow!("failed to download chunk {}", i));
-            }
+        let prefetch_start_chunk = last_chunk.saturating_add(1);
+        if prefetch_start_chunk < prefetch_end_chunk {
+            self.downloader
+                .prefetch_range(prefetch_start_chunk, prefetch_end_chunk);
         }
 
         // Read from cache.
@@ -285,6 +300,15 @@ impl ProxySession {
                 *bps = *bps * 0.9 + range_len as f64 * 8.0 * 0.1;
             }
         }
+
+        debug!(
+            "serve_range session={} range=[{}, {}) bytes={} elapsed_ms={}",
+            self.session_id,
+            start,
+            end,
+            data.len(),
+            t0.elapsed().as_millis()
+        );
 
         Ok(data)
     }
