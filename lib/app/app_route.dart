@@ -34,19 +34,19 @@ class AppRoutes {
     AppMenuItem(
       route: AppRoute.home,
       path: home,
-      label: 'Home',
+      label: '首页',
       icon: Icons.home_outlined,
     ),
     AppMenuItem(
       route: AppRoute.history,
       path: history,
-      label: 'History',
+      label: '历史',
       icon: Icons.history_outlined,
     ),
     AppMenuItem(
       route: AppRoute.settings,
       path: settings,
-      label: 'Settings',
+      label: '设置',
       icon: Icons.settings_outlined,
     ),
   ];

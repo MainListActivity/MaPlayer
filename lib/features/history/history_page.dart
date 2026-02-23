@@ -142,7 +142,7 @@ class _HistoryPageState extends State<HistoryPage> with RouteAware {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'Play History',
+            '播放历史',
             style: TextStyle(
               fontSize: 24,
               fontWeight: FontWeight.bold,

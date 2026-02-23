@@ -243,7 +243,7 @@ class _HomePageState extends State<HomePage> {
                     ),
                     alignment: Alignment.center,
                     child: const Text(
-                      'WebView unavailable in current environment',
+                      '当前环境不支持 WebView',
                     ),
                   )
                 : !_homeUrlResolved

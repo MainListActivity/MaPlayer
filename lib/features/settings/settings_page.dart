@@ -137,7 +137,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Configuration',
+                      '配置',
                       key: Key('settings-page-title'),
                       style: TextStyle(
                         fontSize: 24,
@@ -154,14 +154,14 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
               const SizedBox(height: 16),
               _SectionCard(
-                title: 'Home Site URL',
+                title: '主页站点地址',
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     TextField(
                       controller: _urlController,
                       decoration: const InputDecoration(
-                        labelText: 'Homepage URL',
+                        labelText: '主页 URL',
                         hintText: 'https://www.wogg.net/',
                         prefixIcon: Icon(Icons.link),
                       ),
@@ -170,7 +170,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     TextField(
                       controller: _remoteJsUrlController,
                       decoration: const InputDecoration(
-                        labelText: 'Remote Bridge JS URL (optional)',
+                        labelText: '远程桥接 JS 地址（可选）',
                         hintText: 'https://example.com/home-bridge.js',
                         prefixIcon: Icon(Icons.code),
                       ),
@@ -179,7 +179,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     TextField(
                       controller: _homeUaController,
                       decoration: const InputDecoration(
-                        labelText: 'Home WebView UA (optional)',
+                        labelText: '主页 WebView UA（可选）',
                         hintText: 'Mozilla/5.0 ...',
                         prefixIcon: Icon(Icons.devices),
                       ),
@@ -195,7 +195,7 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
               const SizedBox(height: 12),
               _SectionCard(
-                title: 'Quark Account',
+                title: '夸克账号',
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [

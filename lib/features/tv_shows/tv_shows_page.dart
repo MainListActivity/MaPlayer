@@ -30,7 +30,7 @@ class TvShowsPage extends StatelessWidget {
                     ),
                     const SizedBox(width: 12),
                     Text(
-                      'TV Shows',
+                      '剧集',
                       key: const Key('tvshows-page-title'),
                       style: Theme.of(context).textTheme.headlineSmall
                           ?.copyWith(fontWeight: FontWeight.w800),

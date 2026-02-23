@@ -778,7 +778,7 @@ class _PlayerPageState extends State<PlayerPage> {
     showGeneralDialog(
       context: context,
       barrierDismissible: true,
-      barrierLabel: 'Dismiss',
+      barrierLabel: '关闭',
       barrierColor: Colors.black54,
       transitionDuration: const Duration(milliseconds: 300),
       useRootNavigator: true,
@@ -971,7 +971,7 @@ class _PlayerPageState extends State<PlayerPage> {
                 Expanded(
                   child: TextField(
                     decoration: InputDecoration(
-                      hintText: 'Search...',
+                      hintText: '搜索...',
                       hintStyle: TextStyle(
                         color: Color(0xFF5A6F8E),
                         fontSize: 12,
@@ -1084,7 +1084,7 @@ class _PlayerPageState extends State<PlayerPage> {
                       color: Color(0xFFF47B25),
                     ),
                     label: Text(
-                      _currentPlayingEpisode?.displayResolution ?? 'Server 1',
+                      _currentPlayingEpisode?.displayResolution ?? '线路1',
                       style: const TextStyle(color: Colors.white),
                     ),
                     style: OutlinedButton.styleFrom(
@@ -1119,7 +1119,7 @@ class _PlayerPageState extends State<PlayerPage> {
                       color: Colors.white70,
                     ),
                     label: const Text(
-                      'English',
+                      '英语',
                       style: TextStyle(color: Colors.white70),
                     ),
                   ),
@@ -1134,12 +1134,12 @@ class _PlayerPageState extends State<PlayerPage> {
                       color: Colors.white70,
                     ),
                     onPressed: () {},
-                    tooltip: 'Add to Favorites',
+                    tooltip: '加入收藏',
                   ),
                   IconButton(
                     icon: const Icon(Icons.share, color: Colors.white70),
                     onPressed: () {},
-                    tooltip: 'Share',
+                    tooltip: '分享',
                   ),
                   IconButton(
                     icon: const Icon(
@@ -1147,7 +1147,7 @@ class _PlayerPageState extends State<PlayerPage> {
                       color: Colors.white70,
                     ),
                     onPressed: () {},
-                    tooltip: 'Report Issue',
+                    tooltip: '问题反馈',
                   ),
                 ],
               ),
@@ -1176,7 +1176,7 @@ class _PlayerPageState extends State<PlayerPage> {
               Text(
                 widget.args?.title ??
                     _currentPlayingEpisode?.name ??
-                    'Unknown Title',
+                    '未知标题',
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
@@ -1216,7 +1216,7 @@ class _PlayerPageState extends State<PlayerPage> {
                   const Icon(Icons.circle, size: 4, color: Colors.white54),
                   const SizedBox(width: 8),
                   const Text(
-                    'Sci-Fi',
+                    '科幻',
                     style: TextStyle(color: Colors.white54, fontSize: 13),
                   ),
                   const Spacer(),
@@ -1233,7 +1233,7 @@ class _PlayerPageState extends State<PlayerPage> {
               ),
               const SizedBox(height: 16),
               const Text(
-                'More details and synopsis can be placed here if fetched from the provider. For now, it plays the selected media.',
+                '如已从资源方获取，可在此处展示更多详情与剧情简介。目前将直接播放所选媒体。',
                 style: TextStyle(
                   color: Colors.white70,
                   height: 1.5,
@@ -1257,7 +1257,7 @@ class _PlayerPageState extends State<PlayerPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  'Episodes',
+                  '剧集列表',
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
@@ -1269,7 +1269,7 @@ class _PlayerPageState extends State<PlayerPage> {
                   child: _groupKeys.isEmpty
                       ? const Center(
                           child: Text(
-                            'No episodes found',
+                            '未找到剧集',
                             style: TextStyle(color: Colors.white70),
                           ),
                         )
@@ -1367,8 +1367,8 @@ class _PlayerPageState extends State<PlayerPage> {
               const SizedBox(height: 16),
               Text(
                 _currentPlayingEpisode?.displayTitle != null
-                    ? 'Loading ${_currentPlayingEpisode!.displayTitle}...'
-                    : 'Preparing playback...',
+                    ? '正在加载 ${_currentPlayingEpisode!.displayTitle}...'
+                    : '正在准备播放...',
                 style: const TextStyle(color: Colors.white70),
               ),
             ],
@@ -1397,7 +1397,7 @@ class _PlayerPageState extends State<PlayerPage> {
               const SizedBox(height: 16),
               ElevatedButton(
                 onPressed: () => Navigator.pop(context),
-                child: const Text('Back'),
+                child: const Text('返回'),
               ),
             ],
           ),
