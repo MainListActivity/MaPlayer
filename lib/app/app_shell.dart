@@ -18,8 +18,13 @@ class AppShell extends StatelessWidget {
   }
 
   Widget _buildSidebar(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final sidebarWidth = screenWidth * 0.15 > 180.0
+        ? screenWidth * 0.15
+        : 180.0;
+
     return Container(
-      width: 250,
+      width: sidebarWidth,
       color: const Color(0xFF192233),
       child: SafeArea(
         child: Column(
