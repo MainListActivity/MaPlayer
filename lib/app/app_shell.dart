@@ -104,20 +104,34 @@ class AppShell extends StatelessWidget {
         .indexWhere((item) => item.route == currentRoute)
         .clamp(0, AppRoutes.menuItems.length - 1);
 
-    return NavigationBar(
-      backgroundColor: const Color(0xFF192233),
-      indicatorColor: const Color(0xFFF47B25).withValues(alpha: 0.20),
-      selectedIndex: selectedIndex,
-      onDestinationSelected: (index) =>
-          _onMenuTap(context, AppRoutes.menuItems[index].route),
-      destinations: AppRoutes.menuItems.map((item) {
-        return NavigationDestination(
-          icon: Icon(item.icon, color: Colors.white70),
-          selectedIcon: Icon(item.icon, color: const Color(0xFFF47B25)),
-          label: item.label,
-        );
-      }).toList(),
-      labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+    return Theme(
+      data: Theme.of(context).copyWith(
+        navigationBarTheme: NavigationBarThemeData(
+          labelTextStyle: WidgetStateProperty.resolveWith((states) {
+            final selected = states.contains(WidgetState.selected);
+            return TextStyle(
+              color: selected ? const Color(0xFFF47B25) : Colors.white70,
+              fontSize: 12,
+              fontWeight: selected ? FontWeight.bold : FontWeight.w500,
+            );
+          }),
+        ),
+      ),
+      child: NavigationBar(
+        backgroundColor: const Color(0xFF192233),
+        indicatorColor: const Color(0xFFF47B25).withValues(alpha: 0.20),
+        selectedIndex: selectedIndex,
+        onDestinationSelected: (index) =>
+            _onMenuTap(context, AppRoutes.menuItems[index].route),
+        destinations: AppRoutes.menuItems.map((item) {
+          return NavigationDestination(
+            icon: Icon(item.icon, color: Colors.white70),
+            selectedIcon: Icon(item.icon, color: const Color(0xFFF47B25)),
+            label: item.label,
+          );
+        }).toList(),
+        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+      ),
     );
   }
 
