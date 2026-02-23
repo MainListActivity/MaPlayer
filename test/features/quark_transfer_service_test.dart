@@ -54,30 +54,41 @@ void main() {
       );
 
       final client = MockClient((http.Request request) async {
-        expect(request.url.path, '/1/clouddrive/file/v2/play');
-        expect(_headerValue(request.headers, 'Cookie'), cookie);
-        expect(_headerValue(request.headers, 'User-Agent'), isNotEmpty);
-        return http.Response(
-          jsonEncode(<String, dynamic>{
-            'code': 0,
-            'data': <String, dynamic>{
-              'video_list': <Map<String, dynamic>>[
-                <String, dynamic>{
-                  'resolution': 'high',
-                  'video_info': <String, dynamic>{
-                    'url': 'https://video.example.com/high.m3u8',
-                    'headers': <String, String>{
-                      'Referer': 'https://pan.quark.cn/',
-                      'user-agent': 'bad-ua',
-                      'Cookie': 'bad-cookie=1',
+        if (request.url.path == '/1/clouddrive/file/v2/play') {
+          expect(_headerValue(request.headers, 'Cookie'), cookie);
+          expect(_headerValue(request.headers, 'User-Agent'), isNotEmpty);
+          return http.Response(
+            jsonEncode(<String, dynamic>{
+              'code': 0,
+              'data': <String, dynamic>{
+                'video_list': <Map<String, dynamic>>[
+                  <String, dynamic>{
+                    'resolution': 'high',
+                    'video_info': <String, dynamic>{
+                      'url': 'https://video.example.com/high.m3u8',
+                      'headers': <String, String>{
+                        'Referer': 'https://pan.quark.cn/',
+                        'user-agent': 'bad-ua',
+                        'Cookie': 'bad-cookie=1',
+                      },
                     },
                   },
-                },
-              ],
-            },
-          }),
-          200,
-        );
+                ],
+              },
+            }),
+            200,
+          );
+        }
+        if (request.url.path == '/1/clouddrive/file/download') {
+          return http.Response(
+            jsonEncode(<String, dynamic>{
+              'code': 0,
+              'data': <List<Map<String, dynamic>>>[],
+            }),
+            200,
+          );
+        }
+        return http.Response('not found', 404);
       });
 
       final service = QuarkTransferService(
@@ -543,6 +554,94 @@ void main() {
       expect(playable.selectedVariant?.resolution, 'normal');
       expect(playable.url, 'https://video.example.com/normal.m3u8');
       expect(playable.variants.map((e) => e.resolution), contains('raw'));
+    },
+  );
+
+  test(
+    'saveShareEpisodeToFolder tolerates duplicate-name task failure',
+    () async {
+      final authService = _FakeAuthService(
+        QuarkAuthState(
+          accessToken: 'token',
+          refreshToken: 'refresh',
+          expiresAtEpochMs: DateTime.now()
+              .add(const Duration(hours: 1))
+              .millisecondsSinceEpoch,
+          cookie: 'sid=abc',
+        ),
+      );
+
+      final client = MockClient((http.Request request) async {
+        if (request.url.path == '/1/clouddrive/share/sharepage/token') {
+          return http.Response(
+            jsonEncode(<String, dynamic>{
+              'code': 0,
+              'data': <String, dynamic>{'stoken': 'stoken-1'},
+            }),
+            200,
+          );
+        }
+        if (request.url.path == '/1/clouddrive/share/sharepage/detail') {
+          return http.Response(
+            jsonEncode(<String, dynamic>{
+              'code': 0,
+              'data': <String, dynamic>{
+                'list': <Map<String, dynamic>>[
+                  <String, dynamic>{
+                    'fid': 's2',
+                    'file_name': '第2集.mp4',
+                    'pdir_fid': '0',
+                    'share_fid_token': 't2',
+                    'dir': false,
+                  },
+                ],
+              },
+            }),
+            200,
+          );
+        }
+        if (request.url.path == '/1/clouddrive/share/sharepage/save' &&
+            request.method == 'POST') {
+          return http.Response(
+            jsonEncode(<String, dynamic>{
+              'code': 0,
+              'data': <String, dynamic>{'task_id': 'task-1'},
+            }),
+            200,
+          );
+        }
+        if (request.url.path == '/1/clouddrive/task') {
+          return http.Response(
+            jsonEncode(<String, dynamic>{
+              'code': 0,
+              'data': <String, dynamic>{
+                'status': 3,
+                'task_title': 'name conflict duplicate',
+              },
+            }),
+            200,
+          );
+        }
+        return http.Response('not found', 404);
+      });
+
+      final service = QuarkTransferService(
+        authService: authService,
+        httpClient: client,
+        baseUri: Uri.parse('https://drive-pc.quark.cn/1/clouddrive/'),
+      );
+
+      await service.saveShareEpisodeToFolder(
+        shareUrl: 'https://pan.quark.cn/s/abc',
+        episode: const QuarkShareFileEntry(
+          fid: 's2',
+          fileName: '第2集.mp4',
+          pdirFid: '0',
+          shareFidToken: 't2',
+          isDirectory: false,
+        ),
+        folderId: 'folder1',
+      );
     },
   );
 }

@@ -369,8 +369,18 @@ class SharePlayOrchestrator {
 
   String _showDirNameFor(String title, String shareUrl) {
     final trimmed = title.trim();
-    final seed = trimmed.isNotEmpty ? trimmed : _shareId(shareUrl);
-    return seed.replaceAll(RegExp(r'[^\u4e00-\u9fa5a-zA-Z0-9._-]'), '_');
+    final lower = trimmed.toLowerCase();
+    final fallbackToShareId =
+        trimmed.isEmpty ||
+        trimmed == '未命名剧集' ||
+        lower == 'untitled' ||
+        lower == 'untitled_show';
+    final seed = fallbackToShareId ? _shareId(shareUrl) : trimmed;
+    final sanitized = seed.replaceAll(
+      RegExp(r'[^\u4e00-\u9fa5a-zA-Z0-9._-]'),
+      '_',
+    );
+    return sanitized.isEmpty ? _shareId(shareUrl) : sanitized;
   }
 
   SharePlayRequest _mergeRequestWithHistory(

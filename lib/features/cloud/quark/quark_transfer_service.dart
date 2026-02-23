@@ -155,15 +155,41 @@ class QuarkTransferService {
     _logTransfer(
       'save selected: uri=$uri status=${response.statusCode} body=${_snippet(response.body)}',
     );
+    Map<String, dynamic>? body;
+    try {
+      final decoded = jsonDecode(response.body);
+      if (decoded is Map<String, dynamic>) {
+        body = decoded;
+      } else if (decoded is Map) {
+        body = Map<String, dynamic>.from(decoded);
+      }
+    } catch (_) {
+      // Keep body null for non-json response.
+    }
     if (response.statusCode < 200 || response.statusCode >= 300) {
+      if (body != null && _isDuplicateNameConflictBody(body)) {
+        _logTransfer('save selected: duplicate name conflict ignored');
+        return;
+      }
       throw QuarkException(
         'Save selected episode failed: ${response.statusCode}',
         code: 'SAVE_FAILED',
       );
     }
-    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    if (body == null) {
+      throw QuarkException(
+        'Save selected episode response invalid',
+        code: 'SAVE_FAILED',
+      );
+    }
     final code = body['code'];
     if (code is num && code.toInt() != 0) {
+      if (_isDuplicateNameConflictBody(body)) {
+        _logTransfer(
+          'save selected: duplicate name conflict(code=${code.toInt()}) ignored',
+        );
+        return;
+      }
       throw QuarkException(
         'Save selected episode failed(code=${code.toInt()}): ${body['message']}',
         code: 'SAVE_FAILED',
@@ -207,6 +233,12 @@ class QuarkTransferService {
             return;
           }
           if (status == 3 || status == 4) {
+            if (_isDuplicateNameConflictBody(data)) {
+              _logTransfer(
+                'task poll: duplicate name conflict(status=$status) ignored',
+              );
+              return;
+            }
             throw QuarkException(
               'Save task failed(status=$status): ${data['task_title'] ?? ''}',
               code: 'SAVE_TASK_FAILED',
@@ -245,6 +277,53 @@ class QuarkTransferService {
       // Keep fallback when share listing refresh fails.
     }
     return fallback;
+  }
+
+  bool _isDuplicateNameConflictBody(Map<String, dynamic> body) {
+    final code = (body['code'] as num?)?.toInt();
+    if (code == 23008) {
+      return true;
+    }
+    final candidates = <Object?>[
+      body['message'],
+      body['msg'],
+      body['error'],
+      body['error_msg'],
+      body['err_msg'],
+      body['task_title'],
+      body['title'],
+      body['status_msg'],
+    ];
+    final nestedData = body['data'];
+    if (nestedData is Map) {
+      candidates.addAll(<Object?>[
+        nestedData['message'],
+        nestedData['msg'],
+        nestedData['error'],
+        nestedData['error_msg'],
+        nestedData['err_msg'],
+        nestedData['task_title'],
+        nestedData['title'],
+        nestedData['status_msg'],
+      ]);
+    }
+    for (final candidate in candidates) {
+      if (_looksLikeDuplicateNameConflict(candidate?.toString() ?? '')) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  bool _looksLikeDuplicateNameConflict(String message) {
+    final normalized = message.toLowerCase();
+    if (normalized.isEmpty) return false;
+    return normalized.contains('同名') ||
+        normalized.contains('重复') ||
+        normalized.contains('已存在') ||
+        normalized.contains('name conflict') ||
+        normalized.contains('duplicate') ||
+        normalized.contains('already exists');
   }
 
   Future<List<QuarkFileEntry>> listFilesInFolder(String folderId) async {

@@ -324,4 +324,27 @@ void main() {
     expect(saved?.rating, '8.2');
     expect(saved?.category, '动作');
   });
+
+  test(
+    'prepareEpisodes uses share id as show dir when title is placeholder',
+    () async {
+      final transfer = _FakeTransferService();
+      final history = _MemoryHistoryRepository();
+      final orchestrator = SharePlayOrchestrator(
+        authService: _FakeAuthService(),
+        transferService: transfer,
+        historyRepository: history,
+      );
+
+      final prepared = await orchestrator.prepareEpisodes(
+        const SharePlayRequest(
+          shareUrl: 'https://pan.quark.cn/s/abc123',
+          pageUrl: 'https://www.wogg.net/v/1',
+          title: '未命名剧集',
+        ),
+      );
+
+      expect(prepared.showDirName, 'abc123');
+    },
+  );
 }
