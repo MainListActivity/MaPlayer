@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use axum::{
+    body::Body,
     extract::{Path, State},
     http::{header, HeaderMap, StatusCode},
     response::{IntoResponse, Response},
@@ -13,6 +14,7 @@ use axum::{
 };
 use parking_lot::RwLock;
 use tokio::net::TcpListener;
+use tokio_stream::wrappers::ReceiverStream;
 use tracing::{debug, error};
 
 use crate::config::STARTUP_PROBE_CLAMP_BYTES;
@@ -202,36 +204,42 @@ async fn stream_handler(
         session_id, start, end, is_partial
     );
 
-    match session.serve_range(start, end).await {
-        Ok(data) => {
-            let body_len = data.len();
-            let status = if is_partial {
-                StatusCode::PARTIAL_CONTENT
-            } else {
-                StatusCode::OK
-            };
+    let body_len = end - start;
 
-            let mut resp_headers = HeaderMap::new();
-            resp_headers.insert(header::CONTENT_TYPE, content_type.parse().unwrap());
-            resp_headers.insert(
-                header::CONTENT_LENGTH,
-                body_len.to_string().parse().unwrap(),
-            );
-            resp_headers.insert(header::ACCEPT_RANGES, "bytes".parse().unwrap());
-
-            if is_partial {
-                // Content-Range: bytes start-end/total (end is inclusive in HTTP).
-                let content_range = format!("bytes {}-{}/{}", start, end - 1, total);
-                resp_headers.insert(header::CONTENT_RANGE, content_range.parse().unwrap());
-            }
-
-            (status, resp_headers, data).into_response()
-        }
+    // Set up the streaming body — data is sent chunk-by-chunk as each
+    // cache chunk becomes available, so the player receives first bytes
+    // immediately and never times out waiting for the full range.
+    let rx = match session.serve_range_stream(start, end) {
+        Ok(rx) => rx,
         Err(e) => {
-            error!("serve_range error: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, format!("error: {}", e)).into_response()
+            error!("serve_range_stream error: {}", e);
+            return (StatusCode::INTERNAL_SERVER_ERROR, format!("error: {}", e)).into_response();
         }
+    };
+
+    let stream = ReceiverStream::new(rx);
+    let body = Body::from_stream(stream);
+
+    let status = if is_partial {
+        StatusCode::PARTIAL_CONTENT
+    } else {
+        StatusCode::OK
+    };
+
+    let mut resp_headers = HeaderMap::new();
+    resp_headers.insert(header::CONTENT_TYPE, content_type.parse().unwrap());
+    resp_headers.insert(
+        header::CONTENT_LENGTH,
+        body_len.to_string().parse().unwrap(),
+    );
+    resp_headers.insert(header::ACCEPT_RANGES, "bytes".parse().unwrap());
+
+    if is_partial {
+        let content_range = format!("bytes {}-{}/{}", start, end - 1, total);
+        resp_headers.insert(header::CONTENT_RANGE, content_range.parse().unwrap());
     }
+
+    (status, resp_headers, body).into_response()
 }
 
 /// HEAD /stream/{session_id} — return headers only.

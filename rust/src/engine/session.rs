@@ -7,7 +7,9 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use anyhow::{anyhow, Result};
+use bytes::Bytes;
 use parking_lot::Mutex;
+use tokio::sync::mpsc;
 use tracing::{debug, info};
 
 use super::cache::DiskCache;
@@ -331,6 +333,167 @@ impl ProxySession {
         );
 
         Ok(data)
+    }
+
+    /// Serve a byte range [start, end) as a stream of Bytes chunks.
+    ///
+    /// Returns a receiver that yields data piece-by-piece as each underlying
+    /// cache chunk becomes available.  The HTTP handler can start writing to
+    /// the socket as soon as the first piece arrives, preventing player
+    /// timeouts even when later chunks are still downloading.
+    pub fn serve_range_stream(
+        self: &Arc<Self>,
+        start: u64,
+        end: u64,
+    ) -> Result<mpsc::Receiver<Result<Bytes>>> {
+        let end = end.min(self.info.content_length);
+        if start >= end {
+            return Err(anyhow!("invalid range: start={} end={}", start, end));
+        }
+
+        let range_len = end - start;
+
+        // Update playback tracking.
+        self.playback_offset.store(start, Ordering::Relaxed);
+
+        // Seek detection.
+        let is_seek = {
+            let seek = self.seek_state.lock();
+            seek.is_seek(start)
+        };
+
+        if is_seek {
+            debug!("seek detected at offset {}", start);
+            let start_chunk = (start / self.chunk_size) as usize;
+            let window_chunks = 32usize;
+            let window_end = (start_chunk + window_chunks).min(self.cache.total_chunks());
+            self.downloader
+                .abort_outside_window(start_chunk, window_end);
+
+            let mut seek = self.seek_state.lock();
+            seek.reset_warmup();
+        }
+
+        let first_chunk = (start / self.chunk_size) as usize;
+        let last_chunk = ((end - 1) / self.chunk_size) as usize;
+
+        // Record cache hit stats.
+        let mut cached_bytes = 0u64;
+        for i in first_chunk..=last_chunk {
+            if self.cache.has_chunk(i) {
+                cached_bytes += self.cache.chunk_len(i) as u64;
+            }
+        }
+        self.stats
+            .record_request(range_len, cached_bytes.min(range_len));
+
+        // Dispatch urgent downloads for all required chunks up-front.
+        for i in first_chunk..=last_chunk {
+            self.downloader.start_urgent_prefetch(i);
+        }
+
+        // Channel with enough buffer for all chunks so sender doesn't block.
+        let chunk_count = last_chunk - first_chunk + 1;
+        let (tx, rx) = mpsc::channel::<Result<Bytes>>(chunk_count.max(1));
+
+        let session = Arc::clone(self);
+        let t0 = Instant::now();
+
+        tokio::spawn(async move {
+            let mut total_sent = 0u64;
+
+            for i in first_chunk..=last_chunk {
+                // Wait for this specific chunk.
+                if !session.downloader.wait_for_chunk(i).await {
+                    let _ = tx
+                        .send(Err(anyhow!("failed to download chunk {}", i)))
+                        .await;
+                    return;
+                }
+
+                // Calculate the slice of this chunk that falls within [start, end).
+                let chunk_start_byte = i as u64 * session.chunk_size;
+                let chunk_end_byte =
+                    (chunk_start_byte + session.cache.chunk_len(i) as u64).min(end);
+                let slice_start = start.max(chunk_start_byte);
+                let slice_end = end.min(chunk_end_byte);
+
+                if slice_start >= slice_end {
+                    continue;
+                }
+
+                // Read just this slice from the mmap.
+                match session.cache.read_range(slice_start, slice_end) {
+                    Some(data) => {
+                        total_sent += data.len() as u64;
+                        if tx.send(Ok(Bytes::from(data))).await.is_err() {
+                            // Receiver dropped (client disconnected).
+                            debug!("stream receiver dropped at chunk {}", i);
+                            return;
+                        }
+                    }
+                    None => {
+                        let _ = tx
+                            .send(Err(anyhow!(
+                                "cache read failed for chunk {} slice [{}, {})",
+                                i,
+                                slice_start,
+                                slice_end
+                            )))
+                            .await;
+                        return;
+                    }
+                }
+            }
+
+            // All chunks sent — schedule prefetch ahead.
+            let bps = {
+                let bps = session.playback_bps.lock();
+                *bps
+            };
+            let prefetch_bytes = if bps > 0.0 {
+                (bps * PRIORITY_BUFFER_SECONDS as f64) as u64
+            } else {
+                session.chunk_size * 20
+            };
+            let prefetch_end_byte = (end + prefetch_bytes).min(session.info.content_length);
+            let prefetch_end_chunk =
+                ((prefetch_end_byte + session.chunk_size - 1) / session.chunk_size) as usize;
+            let prefetch_end_chunk = prefetch_end_chunk.min(session.cache.total_chunks());
+            let prefetch_start_chunk = last_chunk.saturating_add(1);
+            if prefetch_start_chunk < prefetch_end_chunk {
+                session
+                    .downloader
+                    .prefetch_range(prefetch_start_chunk, prefetch_end_chunk);
+            }
+
+            // Update stats.
+            session.stats.record_served(total_sent);
+            {
+                let mut seek = session.seek_state.lock();
+                let was_sequential = !is_seek;
+                seek.update(start, was_sequential);
+            }
+            if range_len > 0 {
+                let mut bps = session.playback_bps.lock();
+                if *bps == 0.0 {
+                    *bps = range_len as f64 * 8.0;
+                } else {
+                    *bps = *bps * 0.9 + range_len as f64 * 8.0 * 0.1;
+                }
+            }
+
+            debug!(
+                "serve_range_stream session={} range=[{}, {}) bytes={} elapsed_ms={}",
+                session.session_id,
+                start,
+                end,
+                total_sent,
+                t0.elapsed().as_millis()
+            );
+        });
+
+        Ok(rx)
     }
 
     /// Get a stats snapshot.
