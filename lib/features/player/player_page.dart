@@ -1584,6 +1584,92 @@ class _PlayerPageState extends State<PlayerPage> {
           ),
         ),
       ),
+      // ── Episode grid ───────────────────────────────────────────
+      SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Divider(color: Color(0xFF232F48)),
+              const SizedBox(height: 8),
+              const Text(
+                '剧集列表',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(height: 12),
+              if (_groupKeys.isEmpty)
+                const Center(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(vertical: 24),
+                    child: Text('未找到剧集', style: TextStyle(color: Colors.white70)),
+                  ),
+                )
+              else
+                GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 4,
+                    mainAxisSpacing: 8,
+                    crossAxisSpacing: 8,
+                    childAspectRatio: 1,
+                  ),
+                  itemCount: _groupKeys.length,
+                  itemBuilder: (context, index) {
+                    final key = _groupKeys[index];
+                    final isPlaying = key == _currentGroupKey;
+                    final episodesInGroup = _groupedEpisodes[key] ?? [];
+                    final baseEpisode = episodesInGroup.firstOrNull;
+
+                    return InkWell(
+                      onTap: () {
+                        final prepared = _preparedSelection;
+                        if (prepared == null) return;
+                        if (episodesInGroup.isNotEmpty && !isPlaying) {
+                          _playParsedEpisode(prepared, episodesInGroup.first);
+                        }
+                      },
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: isPlaying
+                              ? const Color(0xFFF47B25)
+                              : const Color(0xFF1A2332),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: isPlaying
+                                ? Colors.transparent
+                                : const Color(0xFF2E3B56),
+                          ),
+                        ),
+                        alignment: Alignment.center,
+                        child: isPlaying
+                            ? const Icon(Icons.equalizer, color: Colors.white, size: 20)
+                            : FittedBox(
+                                child: Padding(
+                                  padding: const EdgeInsets.all(4.0),
+                                  child: Text(
+                                    baseEpisode?.displayTitle ?? '${index + 1}',
+                                    style: const TextStyle(
+                                      color: Colors.white70,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                      ),
+                    );
+                  },
+                ),
+            ],
+          ),
+        ),
+      ),
       ],
     );
   }
