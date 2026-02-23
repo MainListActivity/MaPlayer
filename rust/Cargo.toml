@@ -1,0 +1,27 @@
+[package]
+name = "ma_proxy_engine"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "staticlib"]
+
+[dependencies]
+flutter_rust_bridge = "=2.9.0"
+tokio = { version = "1", features = ["full"] }
+axum = "0.8"
+reqwest = { version = "0.12", features = ["stream"] }
+memmap2 = "0.9"
+bitvec = "1"
+bytes = "1"
+async-trait = "0.1"
+serde = { version = "1", features = ["derive"] }
+md5 = "0.7"
+tracing = "0.1"
+parking_lot = "0.12"
+tokio-util = { version = "0.7", features = ["io"] }
+anyhow = "1"
+
+[dev-dependencies]
+tempfile = "3"
+tokio = { version = "1", features = ["full", "test-util"] }
