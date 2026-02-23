@@ -614,6 +614,25 @@ class _PlayerPageState extends State<PlayerPage> {
           }
         }
       }
+      // Restore time-based playback position from history.
+      // Only seek when the currently opening episode matches the last-played episode in history.
+      final prepared = _preparedSelection;
+      final currentEpisode = _currentPlayingEpisode;
+      if (prepared != null && currentEpisode != null) {
+        final history = await _historyRepository.findByShareUrl(
+          prepared.request.shareUrl,
+        );
+        final posMs = history?.lastPositionMs ?? 0;
+        if (posMs > 0 && history?.lastEpisodeFileId == currentEpisode.file.fid) {
+          final duration = await _waitForDuration();
+          if (!mounted) return;
+          if (duration > Duration.zero) {
+            await _playerController.player.seek(
+              Duration(milliseconds: posMs),
+            );
+          }
+        }
+      }
       if (prevSessionId != null && prevSessionId != currentSessionId) {
         // Stop previous download workers immediately on media switch.
         unawaited(ProxyController.instance.closeSession(prevSessionId));
