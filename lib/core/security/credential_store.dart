@@ -1,6 +1,8 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class CredentialStore {
   CredentialStore({FlutterSecureStorage? storage})
@@ -10,12 +12,26 @@ class CredentialStore {
 
   final FlutterSecureStorage _storage;
 
+  // macOS: flutter_secure_storage requires a provisioned development
+  // certificate for Keychain access (errSecMissingEntitlement -34018 otherwise).
+  // Use SharedPreferences as a fallback for macOS.
+  bool get _useSharedPreferencesOnThisPlatform =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.macOS;
+
   Future<void> writeJson(String key, Map<String, dynamic> value) async {
-    await _storage.write(key: key, value: jsonEncode(value));
+    final encoded = jsonEncode(value);
+    if (_useSharedPreferencesOnThisPlatform) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(key, encoded);
+      return;
+    }
+    await _storage.write(key: key, value: encoded);
   }
 
   Future<Map<String, dynamic>?> readJson(String key) async {
-    final raw = await _storage.read(key: key);
+    final raw = _useSharedPreferencesOnThisPlatform
+        ? (await SharedPreferences.getInstance()).getString(key)
+        : await _storage.read(key: key);
     if (raw == null || raw.trim().isEmpty) {
       return null;
     }
@@ -30,6 +46,11 @@ class CredentialStore {
   }
 
   Future<void> delete(String key) async {
+    if (_useSharedPreferencesOnThisPlatform) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(key);
+      return;
+    }
     await _storage.delete(key: key);
   }
 }
