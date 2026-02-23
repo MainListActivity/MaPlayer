@@ -16,6 +16,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 import 'package:ma_palyer/features/playback/share_play_orchestrator.dart';
 import 'package:ma_palyer/features/playback/media_file_parser.dart';
 import 'package:ma_palyer/features/player/vertical_volume_button.dart';
+import 'package:ma_palyer/features/history/play_history_repository.dart';
 
 class PlayerPageArgs {
   const PlayerPageArgs({this.media, this.shareRequest, this.title});
@@ -39,6 +40,7 @@ class _PlayerPageState extends State<PlayerPage> {
   late final VideoController _videoController;
   late final SharePlayOrchestrator _orchestrator;
   late final QuarkAuthService _quarkAuthService;
+  final _historyRepository = PlayHistoryRepository();
 
   bool _isLoading = false;
   String? _errorMessage;
@@ -99,8 +101,31 @@ class _PlayerPageState extends State<PlayerPage> {
       unawaited(ProxyController.instance.closeSession(sessionId));
     }
     unawaited(ProxyController.instance.dispose());
+    // Save playback position
+    final prepared = _preparedSelection;
+    final currentEpisode = _currentPlayingEpisode;
+    if (prepared != null && currentEpisode != null) {
+      final posMs = _playerController.player.state.position.inMilliseconds;
+      if (posMs > 0) {
+        unawaited(_savePlaybackPosition(
+          shareUrl: prepared.request.shareUrl,
+          positionMs: posMs,
+        ));
+      }
+    }
     _playerController.dispose();
     super.dispose();
+  }
+
+  Future<void> _savePlaybackPosition({
+    required String shareUrl,
+    required int positionMs,
+  }) async {
+    final current = await _historyRepository.findByShareUrl(shareUrl);
+    if (current == null) return;
+    await _historyRepository.upsertByShareUrl(
+      current.copyWith(lastPositionMs: positionMs),
+    );
   }
 
   void _bindPlayerStreams() {
