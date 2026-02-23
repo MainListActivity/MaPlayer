@@ -1,4 +1,4 @@
-use ma_proxy_engine::detect::container::{detect_container, find_moov_box, ContainerFormat};
+use rust_lib_ma_palyer::detect::container::{detect_container, find_moov_box, ContainerFormat};
 
 #[test]
 fn test_detect_mp4() {

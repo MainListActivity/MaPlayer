@@ -35,6 +35,7 @@ A new Flutter FFI plugin project.
     # created by this build step.
     :output_files => ["${BUILT_PRODUCTS_DIR}/librust_lib_ma_palyer.a"],
   }
+  s.frameworks = 'SystemConfiguration', 'Security', 'CoreFoundation'
   s.pod_target_xcconfig = {
     'DEFINES_MODULE' => 'YES',
     # Flutter.framework does not contain a i386 slice.

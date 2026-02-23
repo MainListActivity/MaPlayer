@@ -1,5 +1,5 @@
 [package]
-name = "ma_proxy_engine"
+name = "rust_lib_ma_palyer"
 version = "0.1.0"
 edition = "2021"
 

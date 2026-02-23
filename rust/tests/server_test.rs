@@ -13,8 +13,8 @@ use axum::{
 use parking_lot::RwLock;
 use tokio::net::TcpListener;
 
-use ma_proxy_engine::engine::session::ProxySession;
-use ma_proxy_engine::server::handler::{ProxyServer, SessionMap};
+use rust_lib_ma_palyer::engine::session::ProxySession;
+use rust_lib_ma_palyer::server::handler::{ProxyServer, SessionMap};
 
 const CONTENT_SIZE: usize = 10 * 1024 * 1024; // 10 MB
 

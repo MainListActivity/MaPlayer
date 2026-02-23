@@ -8,8 +8,8 @@ use axum::routing::get;
 use axum::Router;
 use tokio::net::TcpListener;
 
-use ma_proxy_engine::source::http_source::HttpSource;
-use ma_proxy_engine::source::traits::MediaSource;
+use rust_lib_ma_palyer::source::http_source::HttpSource;
+use rust_lib_ma_palyer::source::traits::MediaSource;
 
 const TEST_SIZE: usize = 1024 * 1024; // 1 MB
 

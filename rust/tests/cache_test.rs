@@ -1,4 +1,4 @@
-use ma_proxy_engine::engine::cache::DiskCache;
+use rust_lib_ma_palyer::engine::cache::DiskCache;
 
 const MB: u64 = 1024 * 1024;
 
