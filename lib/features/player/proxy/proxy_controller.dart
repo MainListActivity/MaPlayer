@@ -28,7 +28,6 @@ class ProxyController {
   int _aggregateDownloadedBytesLast = 0;
   DateTime _aggregateStatsLastAt = DateTime.now();
 
-  bool get _isSupportedPlatform => Platform.isMacOS || Platform.isWindows;
 
   // Test-only knobs to shrink prefetch/cache windows for fast unit tests.
   static int? debugSessionCacheWindowBytesOverride;
@@ -39,12 +38,6 @@ class ProxyController {
     String? fileKey,
     Future<Map<String, String>?> Function()? onSourceAuthRejected,
   }) async {
-    if (!_isSupportedPlatform) {
-      return ResolvedPlaybackEndpoint(
-        originalMedia: media,
-        playbackUrl: media.url,
-      );
-    }
     _server ??= LocalStreamProxyServer(
       onStreamRequest: _handleStreamRequest,
       logger: _log,
@@ -291,7 +284,11 @@ class LocalStreamProxyServer {
 
   Future<void> start() async {
     if (_server != null) return;
-    _server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    try {
+      _server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    } on SocketException {
+      _server = await HttpServer.bind(InternetAddress.loopbackIPv6, 0);
+    }
     _server!.listen((request) {
       unawaited(_handle(request));
     });
