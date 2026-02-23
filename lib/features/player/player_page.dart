@@ -1276,6 +1276,40 @@ class _PlayerPageState extends State<PlayerPage> {
   }
 
   Widget _buildSidebarArea({VoidCallback? onEpisodeSelected}) {
+    final detailRequest =
+        _preparedSelection?.request ?? widget.args?.shareRequest;
+    final title = (detailRequest?.title.trim().isNotEmpty ?? false)
+        ? detailRequest!.title.trim()
+        : (widget.args?.title ?? _currentPlayingEpisode?.name ?? '未知标题');
+    final year = detailRequest?.year?.trim() ?? '';
+    final category = detailRequest?.category?.trim() ?? '';
+    final rating = detailRequest?.rating?.trim() ?? '';
+    final intro = detailRequest?.intro?.trim() ?? '';
+    final hasMeta = year.isNotEmpty || category.isNotEmpty || rating.isNotEmpty;
+    final metaLeftWidgets = <Widget>[];
+    void appendMetaText(String value) {
+      if (metaLeftWidgets.isNotEmpty) {
+        metaLeftWidgets.add(const SizedBox(width: 8));
+        metaLeftWidgets.add(
+          const Icon(Icons.circle, size: 4, color: Colors.white54),
+        );
+        metaLeftWidgets.add(const SizedBox(width: 8));
+      }
+      metaLeftWidgets.add(
+        Text(
+          value,
+          style: const TextStyle(color: Colors.white54, fontSize: 13),
+        ),
+      );
+    }
+
+    if (year.isNotEmpty) {
+      appendMetaText(year);
+    }
+    if (category.isNotEmpty) {
+      appendMetaText(category);
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -1291,7 +1325,7 @@ class _PlayerPageState extends State<PlayerPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                widget.args?.title ?? _currentPlayingEpisode?.name ?? '未知标题',
+                title,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
@@ -1301,60 +1335,37 @@ class _PlayerPageState extends State<PlayerPage> {
                   height: 1.2,
                 ),
               ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 2,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF232F48),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: const Text(
-                      'TV-14',
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: Colors.white70,
-                        fontWeight: FontWeight.bold,
+              if (hasMeta) ...[
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    ...metaLeftWidgets,
+                    if (rating.isNotEmpty) ...[
+                      if (metaLeftWidgets.isNotEmpty) const Spacer(),
+                      const Icon(Icons.star, color: Colors.amber, size: 16),
+                      const SizedBox(width: 4),
+                      Text(
+                        rating,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  const Text(
-                    '2024',
-                    style: TextStyle(color: Colors.white54, fontSize: 13),
-                  ),
-                  const SizedBox(width: 8),
-                  const Icon(Icons.circle, size: 4, color: Colors.white54),
-                  const SizedBox(width: 8),
-                  const Text(
-                    '科幻',
-                    style: TextStyle(color: Colors.white54, fontSize: 13),
-                  ),
-                  const Spacer(),
-                  const Icon(Icons.star, color: Colors.amber, size: 16),
-                  const SizedBox(width: 4),
-                  const Text(
-                    '8.7',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                '如已从资源方获取，可在此处展示更多详情与剧情简介。目前将直接播放所选媒体。',
-                style: TextStyle(
-                  color: Colors.white70,
-                  height: 1.5,
-                  fontSize: 13,
+                    ],
+                  ],
                 ),
-              ),
+              ],
+              if (intro.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                Text(
+                  intro,
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    height: 1.5,
+                    fontSize: 13,
+                  ),
+                ),
+              ],
             ],
           ),
         ),

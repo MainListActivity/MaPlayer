@@ -139,6 +139,10 @@ void main() {
         shareUrl: 'https://pan.quark.cn/s/abc',
         pageUrl: 'https://www.wogg.net/v/1',
         title: '测试剧',
+        year: '2024',
+        rating: '8.9',
+        category: '科幻',
+        intro: '新简介',
       ),
     );
 
@@ -147,10 +151,14 @@ void main() {
     final saved = await history.findByShareUrl('https://pan.quark.cn/s/abc');
     expect(saved?.cachedEpisodes.length, 2);
     expect(saved?.showFolderId, isNull);
+    expect(saved?.year, '2024');
+    expect(saved?.rating, '8.9');
+    expect(saved?.category, '科幻');
+    expect(saved?.intro, '新简介');
   });
 
   test(
-    'playEpisode skips transfer when selected episode already exists',
+    'playEpisode transfers selected episode when no prior episode exists',
     () async {
       final transfer = _FakeTransferService();
       final history = _MemoryHistoryRepository();
@@ -171,8 +179,8 @@ void main() {
       final media = await orchestrator.playEpisode(prepared, selected);
 
       expect(media.url, 'https://play.example.com/2.m3u8');
-      expect(transfer.clearedBeforeSave, isFalse);
-      expect(transfer.savedSelected, isFalse);
+      expect(transfer.clearedBeforeSave, isTrue);
+      expect(transfer.savedSelected, isTrue);
       expect(transfer.clearedAfterSave, isTrue);
       expect(transfer.findOrCreateCount, 1);
 
@@ -233,41 +241,51 @@ void main() {
     },
   );
 
-  test('prepareEpisodes keeps existing metadata when request is partial', () async {
-    final transfer = _FakeTransferService();
-    final history = _MemoryHistoryRepository();
-    history.map['https://pan.quark.cn/s/abc'] = const PlayHistoryItem(
-      shareUrl: 'https://pan.quark.cn/s/abc',
-      pageUrl: 'https://www.wogg.net/voddetail/1.html',
-      title: '旧标题',
-      coverUrl: 'https://img2.doubanio.com/view/photo/m_ratio_poster/public/p2928387071.jpg',
-      coverHeaders: <String, String>{'Referer': 'https://movie.douban.com/'},
-      intro: '旧简介',
-      showDirName: '旧标题',
-      updatedAtEpochMs: 1,
-    );
-
-    final orchestrator = SharePlayOrchestrator(
-      authService: _FakeAuthService(),
-      transferService: transfer,
-      historyRepository: history,
-    );
-
-    await orchestrator.prepareEpisodes(
-      const SharePlayRequest(
+  test(
+    'prepareEpisodes keeps existing metadata when request is partial',
+    () async {
+      final transfer = _FakeTransferService();
+      final history = _MemoryHistoryRepository();
+      history.map['https://pan.quark.cn/s/abc'] = const PlayHistoryItem(
         shareUrl: 'https://pan.quark.cn/s/abc',
-        pageUrl: '',
-        title: '',
-      ),
-    );
+        pageUrl: 'https://www.wogg.net/voddetail/1.html',
+        title: '旧标题',
+        coverUrl:
+            'https://img2.doubanio.com/view/photo/m_ratio_poster/public/p2928387071.jpg',
+        coverHeaders: <String, String>{'Referer': 'https://movie.douban.com/'},
+        year: '2022',
+        rating: '7.1',
+        category: '悬疑',
+        intro: '旧简介',
+        showDirName: '旧标题',
+        updatedAtEpochMs: 1,
+      );
 
-    final saved = await history.findByShareUrl('https://pan.quark.cn/s/abc');
-    expect(saved, isNotNull);
-    expect(saved?.pageUrl, 'https://www.wogg.net/voddetail/1.html');
-    expect(saved?.title, '旧标题');
-    expect(saved?.coverUrl, contains('doubanio.com'));
-    expect(saved?.intro, '旧简介');
-  });
+      final orchestrator = SharePlayOrchestrator(
+        authService: _FakeAuthService(),
+        transferService: transfer,
+        historyRepository: history,
+      );
+
+      await orchestrator.prepareEpisodes(
+        const SharePlayRequest(
+          shareUrl: 'https://pan.quark.cn/s/abc',
+          pageUrl: '',
+          title: '',
+        ),
+      );
+
+      final saved = await history.findByShareUrl('https://pan.quark.cn/s/abc');
+      expect(saved, isNotNull);
+      expect(saved?.pageUrl, 'https://www.wogg.net/voddetail/1.html');
+      expect(saved?.title, '旧标题');
+      expect(saved?.coverUrl, contains('doubanio.com'));
+      expect(saved?.year, '2022');
+      expect(saved?.rating, '7.1');
+      expect(saved?.category, '悬疑');
+      expect(saved?.intro, '旧简介');
+    },
+  );
 
   test('prepareEpisodes normalizes baidu cover redirect and headers', () async {
     final transfer = _FakeTransferService();
@@ -283,6 +301,9 @@ void main() {
         shareUrl: 'https://pan.quark.cn/s/abc',
         pageUrl: 'https://www.wogg.net/voddetail/119576.html',
         title: '测试剧',
+        year: '2020',
+        rating: '8.2',
+        category: '动作',
         coverUrl:
             'https://image.baidu.com/search/down?url=https://img2.doubanio.com/view/photo/m_ratio_poster/public/p2928387071.jpg',
         coverHeaders: <String, String>{
@@ -296,8 +317,11 @@ void main() {
     expect(saved, isNotNull);
     expect(
       saved?.coverUrl,
-      'https://img2.doubanio.com/view/photo/m_ratio_poster/public/p2928387071.jpg',
+      'https://image.baidu.com/search/down?url=https://img2.doubanio.com/view/photo/m_ratio_poster/public/p2928387071.jpg',
     );
-    expect(saved?.coverHeaders['Referer'], 'https://movie.douban.com/');
+    expect(saved?.coverHeaders, isEmpty);
+    expect(saved?.year, '2020');
+    expect(saved?.rating, '8.2');
+    expect(saved?.category, '动作');
   });
 }

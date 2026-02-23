@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:ma_palyer/app/app_route.dart';
 import 'package:ma_palyer/features/home/home_webview_bridge_contract.dart';
 
+import 'package:ma_palyer/features/playback/play_detail_payload_parser.dart';
 import 'package:ma_palyer/features/playback/share_play_orchestrator.dart';
 import 'package:ma_palyer/features/player/player_page.dart';
 import 'package:ma_palyer/tvbox/tvbox_config_repository.dart';
@@ -129,7 +130,7 @@ class _HomePageState extends State<HomePage> {
     final coverHeaders = (payload['coverHeaders'] as Map?)
         ?.map((key, value) => MapEntry(key.toString(), value?.toString() ?? ''))
         .cast<String, String>();
-    final intro = payload['intro']?.toString();
+    final detail = parsePlayDetailPayload(payload);
     if (shareUrl.isEmpty) {
       _showSnack('未找到夸克分享链接');
       return;
@@ -145,7 +146,10 @@ class _HomePageState extends State<HomePage> {
           title: title.isEmpty ? '未命名剧集' : title,
           coverUrl: cover,
           coverHeaders: coverHeaders,
-          intro: intro,
+          year: detail.year,
+          rating: detail.rating,
+          category: detail.category,
+          intro: detail.intro,
         ),
         title: title.isEmpty ? '未命名剧集' : title,
       ),
@@ -242,9 +246,7 @@ class _HomePageState extends State<HomePage> {
                       borderRadius: BorderRadius.circular(12),
                     ),
                     alignment: Alignment.center,
-                    child: const Text(
-                      '当前环境不支持 WebView',
-                    ),
+                    child: const Text('当前环境不支持 WebView'),
                   )
                 : !_homeUrlResolved
                 ? Container(

@@ -3,6 +3,7 @@ import 'package:ma_palyer/app/app_route.dart';
 import 'package:ma_palyer/features/history/history_cover_utils.dart';
 import 'package:ma_palyer/features/history/play_history_models.dart';
 import 'package:ma_palyer/features/history/play_history_repository.dart';
+import 'package:ma_palyer/features/playback/play_detail_payload_parser.dart';
 import 'package:ma_palyer/features/playback/share_play_orchestrator.dart';
 import 'package:ma_palyer/features/player/player_page.dart';
 
@@ -63,11 +64,9 @@ class _HistoryPageState extends State<HistoryPage> with RouteAware {
     final title = payload['title']?.toString() ?? '';
     final cover = payload['cover']?.toString();
     final coverHeaders = (payload['coverHeaders'] as Map?)
-        ?.map(
-          (key, value) => MapEntry(key.toString(), value?.toString() ?? ''),
-        )
+        ?.map((key, value) => MapEntry(key.toString(), value?.toString() ?? ''))
         .cast<String, String>();
-    final intro = payload['intro']?.toString();
+    final detail = parsePlayDetailPayload(payload);
     if (shareUrl.isEmpty) {
       _showSnack('未找到夸克分享链接');
       return;
@@ -83,7 +82,10 @@ class _HistoryPageState extends State<HistoryPage> with RouteAware {
           title: title.isEmpty ? '未命名剧集' : title,
           coverUrl: cover,
           coverHeaders: coverHeaders,
-          intro: intro,
+          year: detail.year,
+          rating: detail.rating,
+          category: detail.category,
+          intro: detail.intro,
         ),
         title: title.isEmpty ? '未命名剧集' : title,
       ),
@@ -102,6 +104,9 @@ class _HistoryPageState extends State<HistoryPage> with RouteAware {
       'title': item.title,
       'cover': normalizedCover.coverUrl,
       'coverHeaders': normalizedCover.coverHeaders,
+      'year': item.year,
+      'rating': item.rating,
+      'category': item.category,
       'intro': item.intro,
     });
   }
@@ -199,7 +204,8 @@ class _HistoryPageState extends State<HistoryPage> with RouteAware {
                                   child: normalizedCover.coverUrl.isNotEmpty
                                       ? Image.network(
                                           normalizedCover.coverUrl,
-                                          headers: normalizedCover
+                                          headers:
+                                              normalizedCover
                                                   .coverHeaders
                                                   .isEmpty
                                               ? null
@@ -207,13 +213,13 @@ class _HistoryPageState extends State<HistoryPage> with RouteAware {
                                           fit: BoxFit.cover,
                                           errorBuilder:
                                               (context, error, stackTrace) =>
-                                              const Center(
-                                                child: Icon(
-                                                  Icons.movie,
-                                                  size: 48,
-                                                  color: Colors.white24,
-                                                ),
-                                              ),
+                                                  const Center(
+                                                    child: Icon(
+                                                      Icons.movie,
+                                                      size: 48,
+                                                      color: Colors.white24,
+                                                    ),
+                                                  ),
                                         )
                                       : const Center(
                                           child: Icon(

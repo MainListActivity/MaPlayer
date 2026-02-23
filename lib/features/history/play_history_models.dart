@@ -5,6 +5,9 @@ class PlayHistoryItem {
     required this.title,
     required this.coverUrl,
     this.coverHeaders = const <String, String>{},
+    this.year = '',
+    this.rating = '',
+    this.category = '',
     required this.intro,
     required this.showDirName,
     this.showFolderId,
@@ -22,6 +25,9 @@ class PlayHistoryItem {
   final String title;
   final String coverUrl;
   final Map<String, String> coverHeaders;
+  final String year;
+  final String rating;
+  final String category;
   final String intro;
   final String showDirName;
   final String? showFolderId;
@@ -37,6 +43,9 @@ class PlayHistoryItem {
     String? title,
     String? coverUrl,
     Map<String, String>? coverHeaders,
+    String? year,
+    String? rating,
+    String? category,
     String? intro,
     String? showDirName,
     String? showFolderId,
@@ -52,6 +61,9 @@ class PlayHistoryItem {
       title: title ?? this.title,
       coverUrl: coverUrl ?? this.coverUrl,
       coverHeaders: coverHeaders ?? this.coverHeaders,
+      year: year ?? this.year,
+      rating: rating ?? this.rating,
+      category: category ?? this.category,
       intro: intro ?? this.intro,
       showDirName: showDirName ?? this.showDirName,
       showFolderId: showFolderId ?? this.showFolderId,
@@ -71,6 +83,9 @@ class PlayHistoryItem {
     'title': title,
     'coverUrl': coverUrl,
     'coverHeaders': coverHeaders,
+    'year': year,
+    'rating': rating,
+    'category': category,
     'intro': intro,
     'showDirName': showDirName,
     'showFolderId': showFolderId,
@@ -95,6 +110,10 @@ class PlayHistoryItem {
               )
               .cast<String, String>() ??
           const <String, String>{},
+      year: json['year']?.toString() ?? json['vod_year']?.toString() ?? '',
+      rating: json['rating']?.toString() ?? json['vod_score']?.toString() ?? '',
+      category:
+          json['category']?.toString() ?? json['type_name']?.toString() ?? '',
       intro: json['intro']?.toString() ?? json['description']?.toString() ?? '',
       showDirName: json['showDirName']?.toString() ?? '',
       showFolderId: json['showFolderId']?.toString(),

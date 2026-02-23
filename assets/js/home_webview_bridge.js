@@ -54,6 +54,177 @@
     return String(node.textContent).trim();
   }
 
+  function cleanText(raw) {
+    if (raw === null || raw === undefined) return '';
+    return String(raw).replace(/\s+/g, ' ').trim();
+  }
+
+  function pushUniqueText(target, value) {
+    const cleaned = cleanText(value);
+    if (!cleaned) return;
+    if (!target.includes(cleaned)) {
+      target.push(cleaned);
+    }
+  }
+
+  function normalizeYear(raw) {
+    const text = cleanText(raw);
+    if (!text) return '';
+    const match = text.match(/(?:19|20)\d{2}/);
+    return match ? match[0] : '';
+  }
+
+  function normalizeRating(raw) {
+    const text = cleanText(raw);
+    if (!text) return '';
+    const scoreMatch = text.match(/(?:10(?:\.0)?|[0-9](?:\.[0-9])?)/);
+    if (scoreMatch && scoreMatch[0]) {
+      return scoreMatch[0];
+    }
+    return text;
+  }
+
+  function normalizeCategory(raw) {
+    if (Array.isArray(raw)) {
+      const values = [];
+      raw.forEach(function (item) {
+        if (item && typeof item === 'object') {
+          pushUniqueText(values, item.name || item.title || item.value || '');
+          return;
+        }
+        pushUniqueText(values, item);
+      });
+      return values.join(' / ');
+    }
+    return cleanText(raw);
+  }
+
+  function extractIntro(card, autoContext) {
+    const introSelectors =
+      '.video-info-content, .module-info-introduction-content, .module-info-desc, .desc, .module-item-note, .entry-content, .myui-content__detail .data, .stui-content__detail p, .detail-content p, .vod_content, p';
+    const fromCard = card ? card.querySelector(introSelectors) : null;
+    const fromPage = fromCard ? null : document.querySelector(introSelectors);
+    const value = cleanText(textOf(fromCard || fromPage));
+    if (value) return value;
+    return cleanText(
+      (autoContext && (autoContext.intro || autoContext.vod_content)) || ''
+    );
+  }
+
+  function extractYear(card, autoContext) {
+    const yearSelectors =
+      '.video-info-items, .module-info-item-content, .module-info-tag, .myui-content__detail .data, .stui-content__detail p, [class*="year"], [data-year]';
+    const nodes = [];
+    if (card) {
+      const fromCard = card.querySelectorAll(yearSelectors);
+      for (let i = 0; i < fromCard.length; i += 1) {
+        nodes.push(fromCard[i]);
+      }
+    }
+    const fromPage = document.querySelectorAll(yearSelectors);
+    for (let i = 0; i < fromPage.length; i += 1) {
+      nodes.push(fromPage[i]);
+    }
+    for (let i = 0; i < nodes.length; i += 1) {
+      const year = normalizeYear(textOf(nodes[i]));
+      if (year) return year;
+    }
+    const contextYear = normalizeYear(
+      autoContext &&
+        (autoContext.year ||
+          autoContext.vod_year ||
+          autoContext.releaseYear ||
+          autoContext.publishYear)
+    );
+    if (contextYear) return contextYear;
+    return normalizeYear(document.title || '');
+  }
+
+  function extractRating(card, autoContext) {
+    const scoreSelectors =
+      '.module-info-item-score, .score, .rating, .module-info-tag-link, [class*="score"], [class*="rating"]';
+    const nodes = [];
+    if (card) {
+      const fromCard = card.querySelectorAll(scoreSelectors);
+      for (let i = 0; i < fromCard.length; i += 1) {
+        nodes.push(fromCard[i]);
+      }
+    }
+    const fromPage = document.querySelectorAll(scoreSelectors);
+    for (let i = 0; i < fromPage.length; i += 1) {
+      nodes.push(fromPage[i]);
+    }
+    for (let i = 0; i < nodes.length; i += 1) {
+      const rating = normalizeRating(textOf(nodes[i]));
+      if (rating) return rating;
+    }
+
+    const labelNodes = card
+      ? card.querySelectorAll('span, div, p, a, em, strong')
+      : document.querySelectorAll('span, div, p, a, em, strong');
+    for (let i = 0; i < labelNodes.length; i += 1) {
+      const text = cleanText(textOf(labelNodes[i]));
+      if (!text) continue;
+      if (/(豆瓣|评分|imdb|tmdb)/i.test(text)) {
+        const rating = normalizeRating(text);
+        if (rating) return rating;
+      }
+    }
+
+    const contextRating = normalizeRating(
+      autoContext &&
+        (autoContext.rating ||
+          autoContext.vod_score ||
+          autoContext.score ||
+          autoContext.douban_score)
+    );
+    return contextRating;
+  }
+
+  function extractCategory(card, autoContext) {
+    const values = [];
+    const categoryTagSelector =
+      '.module-info-tag a, .module-info-tag-link, .video-info-items a, .myui-content__detail .data a, .stui-content__detail p a, .tag a, [rel~="category"], [class*="genre"] a, [class*="type"] a';
+    const tagRoot = card || document;
+    const tags = tagRoot.querySelectorAll(categoryTagSelector);
+    for (let i = 0; i < tags.length; i += 1) {
+      pushUniqueText(values, textOf(tags[i]));
+    }
+
+    const labelSelectors =
+      '.video-info-items, .module-info-item-content, .myui-content__detail .data, .stui-content__detail p';
+    const labelNodes = tagRoot.querySelectorAll(labelSelectors);
+    for (let i = 0; i < labelNodes.length; i += 1) {
+      const text = cleanText(textOf(labelNodes[i]));
+      if (!text || !/(类型|分类|genre|type)/i.test(text)) continue;
+      const parts = text.split(/[:：]/);
+      const detail = parts.length > 1 ? parts.slice(1).join(' ') : text;
+      detail
+        .split(/[\/|,，、]+/)
+        .map(function (item) {
+          return cleanText(item);
+        })
+        .forEach(function (item) {
+          if (!/(类型|分类|genre|type)/i.test(item)) {
+            pushUniqueText(values, item);
+          }
+        });
+    }
+
+    if (values.length === 0 && autoContext) {
+      const contextCategory = normalizeCategory(
+        autoContext.category ||
+          autoContext.type_name ||
+          autoContext.typeName ||
+          autoContext.genre ||
+          autoContext.genres ||
+          autoContext.class
+      );
+      pushUniqueText(values, contextCategory);
+    }
+    return values.join(' / ');
+  }
+
   function extractCoverUrl(imgNode) {
     if (!imgNode) return '';
     const isLazy = !!(
@@ -138,12 +309,12 @@
       card.querySelector(
         'h1, h2, h3, .title, .module-item-title, .entry-title, .page-title, .video-info-header h1, .myui-content__detail .title'
       ) || anchor;
-    const introNode = card.querySelector(
-      '.video-info-content, .module-info-introduction-content, .desc, .module-item-note, .entry-content, .myui-content__detail .data, .stui-content__detail p, p'
-    );
     const payload = {
       title: textOf(titleNode),
-      intro: textOf(introNode),
+      year: extractYear(card, null),
+      rating: extractRating(card, null),
+      category: extractCategory(card, null),
+      intro: extractIntro(card, null),
       cover: extractAdjacentImageCover(anchor),
       href: toAbsolute(anchor.getAttribute('href') || anchor.href || ''),
       pageUrl: location.href,
@@ -176,9 +347,6 @@
       card.querySelector(
         'h1, h2, h3, .title, .module-item-title, .entry-title, .page-title, .video-info-header h1, .myui-content__detail .title'
       ) || anchor;
-    const introNode = card.querySelector(
-      '.video-info-content, .module-info-introduction-content, .desc, .module-item-note, .entry-content, .myui-content__detail .data, .stui-content__detail p, p'
-    );
     const imgNode = card.querySelector(
       'img[data-src], img[data-original], img[src], .module-item-pic img, .myui-content__thumb img, .stui-content__thumb img'
     );
@@ -197,12 +365,18 @@
       textOf(titleNode) ||
       String(document.title || '').trim() ||
       ((autoContext && autoContext.title) || '');
-    const intro = textOf(introNode) || ((autoContext && autoContext.intro) || '');
+    const year = extractYear(card, autoContext);
+    const rating = extractRating(card, autoContext);
+    const category = extractCategory(card, autoContext);
+    const intro = extractIntro(card, autoContext);
 
     return {
       shareUrl: shareUrl,
       pageUrl: location.href,
       title: title,
+      year: year,
+      rating: rating,
+      category: category,
       intro: intro,
       cover: cover,
       coverHeaders: cover
@@ -255,14 +429,63 @@
       throw new Error('Remote analyzer result must be an object.');
     }
     const normalized = {};
+
+    function pickString(keys, normalizer) {
+      for (let i = 0; i < keys.length; i += 1) {
+        const key = keys[i];
+        const value = normalizer ? normalizer(result[key]) : cleanText(result[key]);
+        if (value) return value;
+      }
+      return '';
+    }
+
     if (typeof result.shareUrl === 'string') {
       normalized.shareUrl = result.shareUrl.trim();
     }
     if (typeof result.title === 'string') {
       normalized.title = result.title.trim();
     }
-    if (typeof result.intro === 'string') {
-      normalized.intro = result.intro.trim();
+    const year = pickString(
+      ['year', 'vod_year', 'releaseYear', 'publishYear', '年份'],
+      normalizeYear
+    );
+    if (year) normalized.year = year;
+    const rating = pickString(
+      ['rating', 'vod_score', 'score', 'douban_score', 'rate'],
+      normalizeRating
+    );
+    const localizedRating = pickString(['评分'], normalizeRating);
+    if (localizedRating && !rating) {
+      normalized.rating = localizedRating;
+    } else if (rating) {
+      normalized.rating = rating;
+    }
+    const category = pickString(
+      [
+        'category',
+        'type_name',
+        'typeName',
+        'genre',
+        'genres',
+        'class',
+        '类别',
+        '分类',
+      ],
+      normalizeCategory
+    );
+    if (category) normalized.category = category;
+    const intro = pickString(
+      ['intro', 'vod_content', 'description', 'desc', 'content', '简介'],
+      cleanText
+    );
+    if (intro) normalized.intro = intro;
+    if (!normalized.rating) {
+      const fallbackRating = pickString(['评分'], normalizeRating);
+      if (fallbackRating) normalized.rating = fallbackRating;
+    }
+    if (!normalized.year) {
+      const fallbackYear = pickString(['年份'], normalizeYear);
+      if (fallbackYear) normalized.year = fallbackYear;
     }
     if (typeof result.cover === 'string') {
       normalized.cover = result.cover.trim();
@@ -275,6 +498,9 @@
       shareUrl: localPayload.shareUrl,
       pageUrl: localPayload.pageUrl,
       title: localPayload.title,
+      year: localPayload.year,
+      rating: localPayload.rating,
+      category: localPayload.category,
       intro: localPayload.intro,
       cover: localPayload.cover,
       coverHeaders: localPayload.coverHeaders,
@@ -285,6 +511,15 @@
       }
       if (typeof remoteResult.title === 'string' && remoteResult.title) {
         merged.title = remoteResult.title;
+      }
+      if (typeof remoteResult.year === 'string' && remoteResult.year) {
+        merged.year = remoteResult.year;
+      }
+      if (typeof remoteResult.rating === 'string' && remoteResult.rating) {
+        merged.rating = remoteResult.rating;
+      }
+      if (typeof remoteResult.category === 'string' && remoteResult.category) {
+        merged.category = remoteResult.category;
       }
       if (typeof remoteResult.intro === 'string') {
         merged.intro = remoteResult.intro;
