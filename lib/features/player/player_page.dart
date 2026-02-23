@@ -1505,6 +1505,36 @@ class _PlayerPageState extends State<PlayerPage> {
                     ),
                     child: Video(controller: _videoController),
                   ),
+                  Positioned(
+                    top: 8,
+                    left: 8,
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(20),
+                        onTap: () async {
+                          final navigator = Navigator.of(context);
+                          final popped = await navigator.maybePop();
+                          if (!popped && mounted) {
+                            navigator.pushReplacementNamed(AppRoutes.home);
+                          }
+                        },
+                        child: Container(
+                          width: 36,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.45),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.arrow_back_ios_new_rounded,
+                            color: Colors.white,
+                            size: 16,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
                   if (_isBufferingNow)
                     Positioned(
                       top: 16,
