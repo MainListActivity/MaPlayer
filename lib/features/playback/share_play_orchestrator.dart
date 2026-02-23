@@ -214,6 +214,10 @@ class SharePlayOrchestrator {
       prepared.request.shareUrl,
     );
     final mergedRequest = _mergeRequestWithHistory(prepared.request, current);
+    // Preserve lastPositionMs only when replaying the same episode;
+    // clear it when switching to a different episode.
+    final isReplayingSameEpisode = current?.lastEpisodeFileId == selected.fileId;
+
     await _historyRepository.upsertByShareUrl(
       PlayHistoryItem(
         shareUrl: prepared.request.shareUrl,
@@ -226,6 +230,7 @@ class SharePlayOrchestrator {
         showFolderId: folder.folderId,
         lastEpisodeFileId: selected.fileId,
         lastEpisodeName: selected.name,
+        lastPositionMs: isReplayingSameEpisode ? current?.lastPositionMs : null,
         cachedEpisodes: current?.cachedEpisodes ?? const <PlayHistoryEpisode>[],
         updatedAtEpochMs: now,
       ),

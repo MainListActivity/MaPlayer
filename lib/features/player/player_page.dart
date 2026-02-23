@@ -602,6 +602,7 @@ class _PlayerPageState extends State<PlayerPage> {
       final restoredBytes = currentSessionId != null
           ? ProxyController.instance.getRestoredPosition(currentSessionId)
           : null;
+      var didByteSeek = false;
       if (restoredBytes != null && restoredBytes > 0) {
         final contentLength = endpoint.proxySession?.contentLength;
         if (contentLength != null && contentLength > 0) {
@@ -611,25 +612,31 @@ class _PlayerPageState extends State<PlayerPage> {
             final seekFraction = restoredBytes / contentLength;
             final seekTo = duration * seekFraction;
             await _playerController.player.seek(seekTo);
+            didByteSeek = true;
           }
         }
       }
       // Restore time-based playback position from history.
       // Only seek when the currently opening episode matches the last-played episode in history.
-      final prepared = _preparedSelection;
-      final currentEpisode = _currentPlayingEpisode;
-      if (prepared != null && currentEpisode != null) {
-        final history = await _historyRepository.findByShareUrl(
-          prepared.request.shareUrl,
-        );
-        final posMs = history?.lastPositionMs ?? 0;
-        if (posMs > 0 && history?.lastEpisodeFileId == currentEpisode.file.fid) {
-          final duration = await _waitForDuration();
-          if (!mounted) return;
-          if (duration > Duration.zero) {
-            await _playerController.player.seek(
-              Duration(milliseconds: posMs),
-            );
+      if (!didByteSeek) {
+        final prepared = _preparedSelection;
+        final currentEpisode = _currentPlayingEpisode;
+        if (prepared != null && currentEpisode != null) {
+          final history = await _historyRepository.findByShareUrl(
+            prepared.request.shareUrl,
+          );
+          final posMs = history?.lastPositionMs ?? 0;
+          if (posMs > 0 && history?.lastEpisodeFileId == currentEpisode.file.fid) {
+            final duration = _playerController.player.state.duration > Duration.zero
+                ? _playerController.player.state.duration
+                : await _waitForDuration();
+            if (!mounted) return;
+            if (duration > Duration.zero) {
+              final seekTo = Duration(
+                milliseconds: posMs.clamp(0, duration.inMilliseconds),
+              );
+              await _playerController.player.seek(seekTo);
+            }
           }
         }
       }
