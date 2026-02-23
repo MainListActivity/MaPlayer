@@ -1524,8 +1524,66 @@ class _PlayerPageState extends State<PlayerPage> {
           ),
         ),
 
-        // placeholder for controls + episodes (next tasks)
-        const SliverToBoxAdapter(child: SizedBox(height: 200)),
+      // ── Controls ───────────────────────────────────────────────
+      SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          child: Row(
+            children: [
+              OutlinedButton.icon(
+                onPressed: _showResolutionPicker,
+                icon: const Icon(Icons.dns, size: 16, color: Color(0xFFF47B25)),
+                label: Text(
+                  _currentPlayingEpisode?.displayResolution ?? '线路1',
+                  style: const TextStyle(color: Colors.white, fontSize: 13),
+                ),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  side: const BorderSide(color: Color(0xFF2E3B56)),
+                  backgroundColor: const Color(0xFF101622),
+                ),
+              ),
+              const SizedBox(width: 8),
+              OutlinedButton.icon(
+                onPressed: _currentMedia?.variants.isNotEmpty == true
+                    ? _showCloudResolutionPicker
+                    : null,
+                icon: const Icon(
+                  Icons.high_quality_rounded,
+                  size: 16,
+                  color: Color(0xFFF47B25),
+                ),
+                label: Text(
+                  _currentCloudVariant != null
+                      ? _cloudResolutionLabel(_currentCloudVariant!)
+                      : '网盘清晰度',
+                  style: const TextStyle(color: Colors.white, fontSize: 13),
+                ),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  side: const BorderSide(color: Color(0xFF2E3B56)),
+                  backgroundColor: const Color(0xFF101622),
+                ),
+              ),
+              const Spacer(),
+              IconButton(
+                icon: const Icon(Icons.favorite_border, color: Colors.white70, size: 20),
+                onPressed: () {},
+                tooltip: '加入收藏',
+                constraints: const BoxConstraints(),
+                padding: const EdgeInsets.all(6),
+              ),
+              IconButton(
+                icon: const Icon(Icons.share, color: Colors.white70, size: 20),
+                onPressed: () {},
+                tooltip: '分享',
+                constraints: const BoxConstraints(),
+                padding: const EdgeInsets.all(6),
+              ),
+            ],
+          ),
+        ),
+      ),
       ],
     );
   }
