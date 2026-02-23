@@ -271,8 +271,7 @@ class _PlayerPageState extends State<PlayerPage> {
 
       setState(() {
         _currentMedia = media;
-        _currentCloudVariant =
-            media.selectedVariant ?? media.variants.firstOrNull;
+        _currentCloudVariant = _defaultCloudVariant(media);
       });
       await _openMedia(media);
     } catch (e) {
@@ -408,7 +407,7 @@ class _PlayerPageState extends State<PlayerPage> {
   void _showCloudResolutionPicker() {
     final media = _currentMedia;
     if (media == null || media.variants.isEmpty) return;
-    final variants = media.variants;
+    final variants = _cloudVariantsForDisplay(media.variants);
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: const Color(0xFF1A2332),
@@ -541,8 +540,7 @@ class _PlayerPageState extends State<PlayerPage> {
     setState(() {
       _isLoading = true;
       _currentMedia = media;
-      _currentCloudVariant =
-          media.selectedVariant ?? media.variants.firstOrNull;
+      _currentCloudVariant = _defaultCloudVariant(media);
     });
     try {
       final shouldUseProxy = _shouldUseProxy(media);
@@ -605,6 +603,44 @@ class _PlayerPageState extends State<PlayerPage> {
     }
     final url = media.url.toLowerCase();
     return url.contains('/file/download');
+  }
+
+  QuarkPlayableVariant? _defaultCloudVariant(PlayableMedia media) {
+    if (media.selectedVariant != null) {
+      return media.selectedVariant;
+    }
+    if (media.variants.isEmpty) {
+      return null;
+    }
+    const preferred = <String>['4k', '2k', 'super', 'high', 'normal', 'low'];
+    for (final resolution in preferred) {
+      for (final variant in media.variants) {
+        if (variant.resolution.toLowerCase() == resolution) {
+          return variant;
+        }
+      }
+    }
+    for (final variant in media.variants) {
+      if (variant.resolution.toLowerCase() != 'raw') {
+        return variant;
+      }
+    }
+    return media.variants.first;
+  }
+
+  List<QuarkPlayableVariant> _cloudVariantsForDisplay(
+    List<QuarkPlayableVariant> variants,
+  ) {
+    final raw = <QuarkPlayableVariant>[];
+    final rest = <QuarkPlayableVariant>[];
+    for (final variant in variants) {
+      if (variant.resolution.toLowerCase() == 'raw') {
+        raw.add(variant);
+      } else {
+        rest.add(variant);
+      }
+    }
+    return <QuarkPlayableVariant>[...raw, ...rest];
   }
 
   bool _isAuthRejectedHttpMessage(String message) {
@@ -1174,9 +1210,7 @@ class _PlayerPageState extends State<PlayerPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                widget.args?.title ??
-                    _currentPlayingEpisode?.name ??
-                    '未知标题',
+                widget.args?.title ?? _currentPlayingEpisode?.name ?? '未知标题',
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
