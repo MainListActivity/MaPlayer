@@ -15,7 +15,6 @@ import 'package:media_kit_video/media_kit_video.dart';
 
 import 'package:ma_palyer/features/playback/share_play_orchestrator.dart';
 import 'package:ma_palyer/features/playback/media_file_parser.dart';
-import 'package:ma_palyer/features/player/vertical_volume_button.dart';
 import 'package:ma_palyer/features/history/play_history_repository.dart';
 
 class PlayerPageArgs {
@@ -160,6 +159,13 @@ class _PlayerPageState extends State<PlayerPage> {
     _completedSub = player.stream.completed.listen((value) {
       if (!mounted) return;
       if (value) {
+        // Ignore spurious completed events during loading/seeking.
+        if (_isLoading) return;
+        final pos = player.state.position;
+        final dur = player.state.duration;
+        if (dur <= Duration.zero) return;
+        // Only treat as genuine completion if position is near the end.
+        if ((dur - pos).inSeconds > 5) return;
         _playNextEpisode();
       }
     });
@@ -1068,7 +1074,7 @@ class _PlayerPageState extends State<PlayerPage> {
           onPressed: _playNextEpisode,
           icon: const Icon(Icons.skip_next),
         ),
-      const VerticalVolumeButton(iconSize: 24),
+      const MaterialDesktopVolumeButton(iconSize: 24),
       MaterialDesktopCustomButton(
         onPressed: _showEpisodesDialog,
         icon: const Icon(Icons.format_list_bulleted),
