@@ -1,12 +1,14 @@
+import 'package:flutter/foundation.dart';
 import 'package:media_kit/media_kit.dart';
 
 class MediaKitPlayerController {
   MediaKitPlayerController()
     : player = Player(
-        configuration: const PlayerConfiguration(
-          // Increase demuxer cache for large raw files to reduce stutter under
-          // short-term network jitter.
-          bufferSize: 256 * 1024 * 1024,
+        configuration: PlayerConfiguration(
+          bufferSize: defaultTargetPlatform == TargetPlatform.android ||
+                  defaultTargetPlatform == TargetPlatform.iOS
+              ? 32 * 1024 * 1024
+              : 256 * 1024 * 1024,
         ),
       );
 

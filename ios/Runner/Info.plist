@@ -47,7 +47,5 @@
 	<true/>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>用于本地代理服务器以实现视频分片缓冲播放</string>
-	<key>NSBonjourServiceTypes</key>
-	<array/>
 </dict>
 </plist>

@@ -302,7 +302,10 @@ class LocalStreamProxyServer {
     if (server == null) {
       throw StateError('proxy server not started');
     }
-    return 'http://${server.address.address}:${server.port}/stream/$sessionId';
+    final host = server.address.type == InternetAddressType.IPv6
+        ? '[${server.address.address}]'
+        : server.address.address;
+    return 'http://$host:${server.port}/stream/$sessionId';
   }
 
   Future<void> stop() async {
