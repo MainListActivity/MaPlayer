@@ -21,7 +21,9 @@ class JarSpiderExecutor implements SpiderExecutor {
         'jar': site.jar,
       });
     } on SpiderRuntimeException catch (e) {
-      _logger?.call('[JarExecutor init failed] code=${e.code} detail=${e.detail}');
+      _logger?.call(
+        '[JarExecutor init failed] code=${e.code} detail=${e.detail}',
+      );
       rethrow;
     }
   }

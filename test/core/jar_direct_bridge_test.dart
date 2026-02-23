@@ -99,12 +99,7 @@ void main() {
       site: _siteWithJar(jarFile.path),
       logger: logs.add,
       processRunner: (exe, args) async {
-        throw ProcessException(
-          exe,
-          args,
-          'Operation not permitted',
-          1,
-        );
+        throw ProcessException(exe, args, 'Operation not permitted', 1);
       },
     );
 

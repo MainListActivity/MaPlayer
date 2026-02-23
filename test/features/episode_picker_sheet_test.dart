@@ -21,8 +21,16 @@ void main() {
                       context,
                       title: '测试剧',
                       episodes: const <EpisodeCandidate>[
-                        EpisodeCandidate(fileId: 'e1', name: '第1集', selectedByDefault: false),
-                        EpisodeCandidate(fileId: 'e2', name: '第2集', selectedByDefault: true),
+                        EpisodeCandidate(
+                          fileId: 'e1',
+                          name: '第1集',
+                          selectedByDefault: false,
+                        ),
+                        EpisodeCandidate(
+                          fileId: 'e2',
+                          name: '第2集',
+                          selectedByDefault: true,
+                        ),
                       ],
                     );
                   },

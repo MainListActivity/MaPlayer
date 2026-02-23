@@ -248,10 +248,7 @@ public class BridgeMain {
     ];
     ProcessResult result;
     try {
-      result = await _processRunner(
-        java,
-        args,
-      );
+      result = await _processRunner(java, args);
     } on ProcessException catch (e) {
       final detail = _spawnFailureDetail(
         method: method,
@@ -294,14 +291,12 @@ public class BridgeMain {
       final err = decoded['error'];
       if (err is Map) {
         final code = err['code']?.toString();
-        final message = err['message']?.toString() ?? 'JAR bridge runtime error';
-        final detail = 'method=$method api=${site.api} jar=${site.jar}\nstdout=$stdout';
+        final message =
+            err['message']?.toString() ?? 'JAR bridge runtime error';
+        final detail =
+            'method=$method api=${site.api} jar=${site.jar}\nstdout=$stdout';
         logger?.call('[JarBridgeRuntimeError] code=$code message=$message');
-        throw SpiderRuntimeException(
-          message,
-          code: code,
-          detail: detail,
-        );
+        throw SpiderRuntimeException(message, code: code, detail: detail);
       }
       return decoded;
     }
@@ -331,7 +326,9 @@ public class BridgeMain {
             .join('\n');
         return '$tid$sep$pg$sep$filter$sep$extLines';
       case 'detailContent':
-        final ids = (params['ids'] is List) ? params['ids'] as List : <dynamic>[];
+        final ids = (params['ids'] is List)
+            ? params['ids'] as List
+            : <dynamic>[];
         return ids.map((e) => e.toString()).join(sep);
       case 'searchContent':
         final key = (params['key'] ?? '').toString();
@@ -345,7 +342,9 @@ public class BridgeMain {
             : const <String>[];
         return <String>[flag, id, ...vip].join(sep);
       case 'proxyLocal':
-        return params.entries.map((e) => '${e.key}\t${e.value ?? ''}').join('\n');
+        return params.entries
+            .map((e) => '${e.key}\t${e.value ?? ''}')
+            .join('\n');
       default:
         return '';
     }

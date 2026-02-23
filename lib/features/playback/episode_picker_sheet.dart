@@ -50,8 +50,9 @@ class _EpisodePickerSheetState extends State<EpisodePickerSheet> {
         }
       }
     }
-    _selectedFileId ??=
-        widget.episodes.isEmpty ? null : widget.episodes.first.fileId;
+    _selectedFileId ??= widget.episodes.isEmpty
+        ? null
+        : widget.episodes.first.fileId;
   }
 
   @override
@@ -65,10 +66,7 @@ class _EpisodePickerSheetState extends State<EpisodePickerSheet> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                widget.title,
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
+              Text(widget.title, style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: 8),
               Expanded(
                 child: ListView.builder(

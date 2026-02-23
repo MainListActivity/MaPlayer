@@ -150,9 +150,6 @@ class AppShell extends StatelessWidget {
       );
     }
 
-    return Scaffold(
-      bottomNavigationBar: _buildBottomNav(context),
-      body: child,
-    );
+    return Scaffold(bottomNavigationBar: _buildBottomNav(context), body: child);
   }
 }

@@ -7,9 +7,7 @@ void main() {
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(
-      const MaterialApp(
-        home: Scaffold(body: HomePage()),
-      ),
+      const MaterialApp(home: Scaffold(body: HomePage())),
     );
 
     expect(find.byKey(const Key('home-webview-placeholder')), findsOneWidget);

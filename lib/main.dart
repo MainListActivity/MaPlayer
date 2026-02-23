@@ -8,11 +8,13 @@ import 'package:ma_palyer/features/movies/movies_page.dart';
 import 'package:ma_palyer/features/player/player_page.dart';
 import 'package:ma_palyer/features/settings/settings_page.dart';
 import 'package:ma_palyer/features/tv_shows/tv_shows_page.dart';
+import 'package:ma_palyer/src/rust/frb_generated.dart';
 import 'package:media_kit/media_kit.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   MediaKit.ensureInitialized();
+  await RustLib.init();
   runApp(const MaPlayerApp());
 }
 

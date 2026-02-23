@@ -5,7 +5,8 @@ class MediaKitPlayerController {
   MediaKitPlayerController()
     : player = Player(
         configuration: PlayerConfiguration(
-          bufferSize: defaultTargetPlatform == TargetPlatform.android ||
+          bufferSize:
+              defaultTargetPlatform == TargetPlatform.android ||
                   defaultTargetPlatform == TargetPlatform.iOS
               ? 32 * 1024 * 1024
               : 256 * 1024 * 1024,

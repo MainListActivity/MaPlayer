@@ -83,6 +83,7 @@ fn compute_session_id(url: &str, file_key: &str) -> String {
 /// Initialize the proxy engine with the given configuration.
 ///
 /// Idempotent — if already initialized, returns `Ok(())`.
+#[flutter_rust_bridge::frb(sync)]
 pub fn init_engine(config: EngineConfig) -> Result<()> {
     let mut guard = ENGINE.lock();
     if guard.is_some() {
@@ -119,6 +120,7 @@ pub fn init_engine(config: EngineConfig) -> Result<()> {
 ///
 /// Returns an existing session if one already exists with the same session ID.
 /// Otherwise clears previous sessions and creates a new one.
+#[flutter_rust_bridge::frb(sync)]
 pub fn create_session(
     url: String,
     headers: HashMap<String, String>,
@@ -195,6 +197,7 @@ pub fn create_session(
 }
 
 /// Close an existing proxy session and remove it from the map.
+#[flutter_rust_bridge::frb(sync)]
 pub fn close_session(session_id: String) -> Result<()> {
     let sessions = {
         let guard = ENGINE.lock();
@@ -211,6 +214,7 @@ pub fn close_session(session_id: String) -> Result<()> {
 ///
 /// If `session_id` is provided, returns stats for that session only.
 /// If `None`, aggregates stats across all active sessions.
+#[flutter_rust_bridge::frb(sync)]
 pub fn get_stats(session_id: Option<String>) -> Result<ProxyStats> {
     let sessions = {
         let guard = ENGINE.lock();
@@ -251,6 +255,7 @@ pub fn get_stats(session_id: Option<String>) -> Result<ProxyStats> {
 }
 
 /// Update authentication credentials for an active session.
+#[flutter_rust_bridge::frb(sync)]
 pub fn update_session_auth(
     session_id: String,
     new_url: String,
@@ -272,6 +277,7 @@ pub fn update_session_auth(
 }
 
 /// Shut down the proxy engine and release all resources.
+#[flutter_rust_bridge::frb(sync)]
 pub fn dispose() -> Result<()> {
     let mut guard = ENGINE.lock();
     if let Some(mut engine) = guard.take() {
