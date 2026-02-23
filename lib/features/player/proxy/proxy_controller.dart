@@ -206,7 +206,7 @@ class ProxyController {
       controller.add(
         ProxyAggregateStats(
           proxyRunning: true,
-          downloadBps: stats.downloadBps.toDouble(),
+          downloadBps: stats.downloadBps.toDouble() * 8,
           bufferedBytesAhead: stats.bufferedBytesAhead.toInt(),
           activeWorkers: stats.activeWorkers,
           updatedAt: DateTime.now(),

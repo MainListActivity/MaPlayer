@@ -19,6 +19,7 @@ pub struct Downloader {
     stats: Arc<StatsCollector>,
     chunk_notifiers: Arc<Mutex<Vec<Option<Arc<Notify>>>>>,
     cancel_tokens: Arc<Mutex<Vec<Option<CancellationToken>>>>,
+    shutdown_token: CancellationToken,
     max_retries: u32,
 }
 
@@ -37,12 +38,30 @@ impl Downloader {
             stats,
             chunk_notifiers: Arc::new(Mutex::new(vec![None; total_chunks])),
             cancel_tokens: Arc::new(Mutex::new(vec![None; total_chunks])),
+            shutdown_token: CancellationToken::new(),
             max_retries: 3,
+        }
+    }
+
+    /// Cancel all in-flight downloads and prevent new ones from starting.
+    pub fn shutdown(&self) {
+        self.shutdown_token.cancel();
+        // Also cancel all individual chunk tokens so in-flight fetches exit promptly.
+        let tokens = self.cancel_tokens.lock();
+        for slot in tokens.iter() {
+            if let Some(token) = slot {
+                token.cancel();
+            }
         }
     }
 
     /// Idempotent: start downloading a chunk if not already cached or in-flight.
     pub fn start_prefetch(&self, chunk_index: usize) {
+        // Don't start new work if shutdown has been requested.
+        if self.shutdown_token.is_cancelled() {
+            return;
+        }
+
         // Already cached — nothing to do.
         if self.cache.has_chunk(chunk_index) {
             return;
@@ -79,6 +98,7 @@ impl Downloader {
         let stats = Arc::clone(&self.stats);
         let cancel_tokens = Arc::clone(&self.cancel_tokens);
         let chunk_notifiers = Arc::clone(&self.chunk_notifiers);
+        let shutdown_token = self.shutdown_token.clone();
         let max_retries = self.max_retries;
         let chunk_size = cache.chunk_size();
 
@@ -90,6 +110,7 @@ impl Downloader {
                 semaphore,
                 stats,
                 token,
+                shutdown_token,
                 max_retries,
                 chunk_size,
             )
@@ -122,14 +143,26 @@ impl Downloader {
         semaphore: Arc<Semaphore>,
         stats: Arc<StatsCollector>,
         token: CancellationToken,
+        shutdown_token: CancellationToken,
         max_retries: u32,
         chunk_size: u64,
     ) -> Result<()> {
-        // Acquire semaphore permit.
-        let _permit = semaphore
-            .acquire()
-            .await
-            .map_err(|e| anyhow::anyhow!("{}", e))?;
+        // Check shutdown before waiting for semaphore.
+        if shutdown_token.is_cancelled() {
+            debug!("chunk {} skipped: shutdown in progress", chunk_index);
+            return Ok(());
+        }
+
+        // Acquire semaphore permit, but bail if shutdown fires while waiting.
+        let _permit = tokio::select! {
+            permit = semaphore.acquire() => {
+                permit.map_err(|e| anyhow::anyhow!("{}", e))?
+            }
+            _ = shutdown_token.cancelled() => {
+                debug!("chunk {} cancelled while waiting for semaphore", chunk_index);
+                return Ok(());
+            }
+        };
 
         stats.increment_workers();
 

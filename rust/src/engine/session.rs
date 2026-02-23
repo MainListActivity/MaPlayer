@@ -354,4 +354,16 @@ impl ProxySession {
     pub fn content_length(&self) -> u64 {
         self.info.content_length
     }
+
+    /// Cancel all in-flight download workers.
+    pub fn shutdown(&self) {
+        self.downloader.shutdown();
+    }
+}
+
+impl Drop for ProxySession {
+    fn drop(&mut self) {
+        debug!("ProxySession {} dropped, shutting down downloader", self.session_id);
+        self.downloader.shutdown();
+    }
 }

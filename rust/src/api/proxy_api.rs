@@ -170,6 +170,9 @@ pub fn create_session(
     }
 
     // Clear old sessions before creating a new one.
+    // Shutdown downloaders explicitly before dropping sessions so that
+    // all in-flight workers release their Arc<DiskCache> (and mmap)
+    // before DiskCache::new truncates the file for the new session.
     {
         let mut map = sessions.write();
         if !map.is_empty() {
@@ -177,6 +180,9 @@ pub fn create_session(
                 "clearing {} previous session(s) before new session",
                 map.len()
             );
+            for session in map.values() {
+                session.shutdown();
+            }
         }
         map.clear();
     }
@@ -229,8 +235,12 @@ pub fn close_session(session_id: String) -> Result<()> {
     };
 
     let mut map = sessions.write();
-    map.remove(&session_id);
-    debug!("close_session id={}", session_id);
+    if let Some(session) = map.remove(&session_id) {
+        session.shutdown();
+        debug!("close_session id={} (shutdown triggered)", session_id);
+    } else {
+        debug!("close_session id={} (not found)", session_id);
+    }
     Ok(())
 }
 
@@ -315,9 +325,12 @@ pub fn update_session_auth(
 pub fn dispose() -> Result<()> {
     let mut guard = ENGINE.lock();
     if let Some(mut engine) = guard.take() {
-        // Clear all sessions.
+        // Shutdown all sessions before clearing.
         {
             let mut map = engine.sessions.write();
+            for session in map.values() {
+                session.shutdown();
+            }
             map.clear();
         }
 
