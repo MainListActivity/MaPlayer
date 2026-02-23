@@ -68,7 +68,7 @@ class AppShell extends StatelessWidget {
                       vertical: 14,
                     ),
                     backgroundColor: selected
-                        ? const Color(0xFFF47B25).withOpacity(0.15)
+                        ? const Color(0xFFF47B25).withValues(alpha: 0.15)
                         : Colors.transparent,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(10),
@@ -96,6 +96,31 @@ class AppShell extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildBottomNav(BuildContext context) {
+    final selectedIndex = AppRoutes.menuItems
+        .indexWhere((item) => item.route == currentRoute)
+        .clamp(0, AppRoutes.menuItems.length - 1);
+
+    return NavigationBar(
+      backgroundColor: const Color(0xFF192233),
+      indicatorColor: const Color(0xFFF47B25).withValues(alpha: 0.20),
+      selectedIndex: selectedIndex,
+      onDestinationSelected: (index) =>
+          _onMenuTap(context, AppRoutes.menuItems[index].route),
+      destinations: AppRoutes.menuItems.map((item) {
+        final selected = item.route == currentRoute;
+        return NavigationDestination(
+          icon: Icon(
+            item.icon,
+            color: selected ? const Color(0xFFF47B25) : Colors.white70,
+          ),
+          label: item.label,
+        );
+      }).toList(),
+      labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
     );
   }
 
