@@ -111,12 +111,9 @@ class AppShell extends StatelessWidget {
       onDestinationSelected: (index) =>
           _onMenuTap(context, AppRoutes.menuItems[index].route),
       destinations: AppRoutes.menuItems.map((item) {
-        final selected = item.route == currentRoute;
         return NavigationDestination(
-          icon: Icon(
-            item.icon,
-            color: selected ? const Color(0xFFF47B25) : Colors.white70,
-          ),
+          icon: Icon(item.icon, color: Colors.white70),
+          selectedIcon: Icon(item.icon, color: const Color(0xFFF47B25)),
           label: item.label,
         );
       }).toList(),
