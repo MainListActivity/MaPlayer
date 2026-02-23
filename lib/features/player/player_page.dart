@@ -36,6 +36,8 @@ class PlayerPage extends StatefulWidget {
 }
 
 class _PlayerPageState extends State<PlayerPage> {
+  static const Duration _mouseIdleTimeout = Duration(seconds: 2);
+
   late final MediaKitPlayerController _playerController;
   late final VideoController _videoController;
   late final SharePlayOrchestrator _orchestrator;
@@ -68,6 +70,8 @@ class _PlayerPageState extends State<PlayerPage> {
   String _networkSpeedLabel = '--';
   String _bufferAheadLabel = '预读: --';
   String _proxyModeLabel = '';
+  Timer? _mouseHideTimer;
+  bool _isMouseCursorVisible = true;
 
   void _log(String message) => debugPrint('[PlayerPage] $message');
 
@@ -93,6 +97,7 @@ class _PlayerPageState extends State<PlayerPage> {
 
   @override
   void dispose() {
+    _mouseHideTimer?.cancel();
     _bufferingSub?.cancel();
     _completedSub?.cancel();
     _playerLogSub?.cancel();
@@ -226,6 +231,52 @@ class _PlayerPageState extends State<PlayerPage> {
   String _networkStatsText() {
     return '网速: $_networkSpeedLabel  ·  $_bufferAheadLabel'
         '${_proxyModeLabel.isEmpty ? '' : '  ·  $_proxyModeLabel'}';
+  }
+
+  bool get _supportsHoverCursor => !Platform.isAndroid && !Platform.isIOS;
+
+  void _markMouseActive() {
+    if (!_supportsHoverCursor) return;
+    if (!_isMouseCursorVisible) {
+      setState(() {
+        _isMouseCursorVisible = true;
+      });
+    }
+    _mouseHideTimer?.cancel();
+    _mouseHideTimer = Timer(_mouseIdleTimeout, () {
+      if (!mounted || !_supportsHoverCursor) return;
+      setState(() {
+        _isMouseCursorVisible = false;
+      });
+    });
+  }
+
+  void _resetMouseCursorOnExit() {
+    if (!_supportsHoverCursor) return;
+    _mouseHideTimer?.cancel();
+    if (!_isMouseCursorVisible) {
+      setState(() {
+        _isMouseCursorVisible = true;
+      });
+    }
+  }
+
+  Widget _wrapVideoWithAutoHideCursor({required Widget child}) {
+    if (!_supportsHoverCursor) return child;
+    return MouseRegion(
+      cursor: _isMouseCursorVisible
+          ? SystemMouseCursors.basic
+          : SystemMouseCursors.none,
+      onEnter: (_) => _markMouseActive(),
+      onHover: (_) => _markMouseActive(),
+      onExit: (_) => _resetMouseCursorOnExit(),
+      child: Listener(
+        behavior: HitTestBehavior.translucent,
+        onPointerDown: (_) => _markMouseActive(),
+        onPointerSignal: (_) => _markMouseActive(),
+        child: child,
+      ),
+    );
   }
 
   Future<void> _prepareAndPlayFromShare(SharePlayRequest request) async {
@@ -1158,36 +1209,40 @@ class _PlayerPageState extends State<PlayerPage> {
               ],
             ),
             clipBehavior: Clip.antiAlias,
-            child: Stack(
-              children: [
-                MaterialDesktopVideoControlsTheme(
-                  normal: MaterialDesktopVideoControlsThemeData(
-                    topButtonBar: _buildTopButtonBar(),
-                    bottomButtonBar: _buildBottomButtonBar(),
+            child: _wrapVideoWithAutoHideCursor(
+              child: Stack(
+                children: [
+                  MaterialDesktopVideoControlsTheme(
+                    normal: MaterialDesktopVideoControlsThemeData(
+                      topButtonBar: _buildTopButtonBar(),
+                      bottomButtonBar: _buildBottomButtonBar(),
+                    ),
+                    fullscreen: MaterialDesktopVideoControlsThemeData(
+                      topButtonBar: _buildTopButtonBar(),
+                      bottomButtonBar: _buildBottomButtonBar(),
+                    ),
+                    child: Video(controller: _videoController),
                   ),
-                  fullscreen: MaterialDesktopVideoControlsThemeData(
-                    topButtonBar: _buildTopButtonBar(),
-                    bottomButtonBar: _buildBottomButtonBar(),
-                  ),
-                  child: Video(controller: _videoController),
-                ),
-                if (_isBufferingNow)
-                  Positioned(
-                    top: 16,
-                    right: 16,
-                    child: IgnorePointer(
-                      child: Text(
-                        _networkStatsText(),
-                        style: const TextStyle(
-                          color: Color(0xFFFFB37A),
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          shadows: [Shadow(color: Colors.black, blurRadius: 8)],
+                  if (_isBufferingNow)
+                    Positioned(
+                      top: 16,
+                      right: 16,
+                      child: IgnorePointer(
+                        child: Text(
+                          _networkStatsText(),
+                          style: const TextStyle(
+                            color: Color(0xFFFFB37A),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            shadows: [
+                              Shadow(color: Colors.black, blurRadius: 8),
+                            ],
+                          ),
                         ),
                       ),
                     ),
-                  ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -1506,68 +1561,70 @@ class _PlayerPageState extends State<PlayerPage> {
             aspectRatio: 16 / 9,
             child: ColoredBox(
               color: Colors.black,
-              child: Stack(
-                children: [
-                  MaterialDesktopVideoControlsTheme(
-                    normal: MaterialDesktopVideoControlsThemeData(
-                      topButtonBar: _buildTopButtonBar(),
-                      bottomButtonBar: _buildBottomButtonBar(),
-                    ),
-                    fullscreen: MaterialDesktopVideoControlsThemeData(
-                      topButtonBar: _buildTopButtonBar(),
-                      bottomButtonBar: _buildBottomButtonBar(),
-                    ),
-                    child: Video(controller: _videoController),
-                  ),
-                  Positioned(
-                    top: 8,
-                    left: 8,
-                    child: Material(
-                      color: Colors.transparent,
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(20),
-                        onTap: () async {
-                          final navigator = Navigator.of(context);
-                          final popped = await navigator.maybePop();
-                          if (!popped && mounted) {
-                            navigator.pushReplacementNamed(AppRoutes.home);
-                          }
-                        },
-                        child: Container(
-                          width: 36,
-                          height: 36,
-                          decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.45),
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(
-                            Icons.arrow_back_ios_new_rounded,
-                            color: Colors.white,
-                            size: 16,
-                          ),
-                        ),
+              child: _wrapVideoWithAutoHideCursor(
+                child: Stack(
+                  children: [
+                    MaterialDesktopVideoControlsTheme(
+                      normal: MaterialDesktopVideoControlsThemeData(
+                        topButtonBar: _buildTopButtonBar(),
+                        bottomButtonBar: _buildBottomButtonBar(),
                       ),
+                      fullscreen: MaterialDesktopVideoControlsThemeData(
+                        topButtonBar: _buildTopButtonBar(),
+                        bottomButtonBar: _buildBottomButtonBar(),
+                      ),
+                      child: Video(controller: _videoController),
                     ),
-                  ),
-                  if (_isBufferingNow)
                     Positioned(
-                      top: 16,
-                      right: 16,
-                      child: IgnorePointer(
-                        child: Text(
-                          _networkStatsText(),
-                          style: const TextStyle(
-                            color: Color(0xFFFFB37A),
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            shadows: [
-                              Shadow(color: Colors.black, blurRadius: 8),
-                            ],
+                      top: 8,
+                      left: 8,
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(20),
+                          onTap: () async {
+                            final navigator = Navigator.of(context);
+                            final popped = await navigator.maybePop();
+                            if (!popped && mounted) {
+                              navigator.pushReplacementNamed(AppRoutes.home);
+                            }
+                          },
+                          child: Container(
+                            width: 36,
+                            height: 36,
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.45),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.arrow_back_ios_new_rounded,
+                              color: Colors.white,
+                              size: 16,
+                            ),
                           ),
                         ),
                       ),
                     ),
-                ],
+                    if (_isBufferingNow)
+                      Positioned(
+                        top: 16,
+                        right: 16,
+                        child: IgnorePointer(
+                          child: Text(
+                            _networkStatsText(),
+                            style: const TextStyle(
+                              color: Color(0xFFFFB37A),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              shadows: [
+                                Shadow(color: Colors.black, blurRadius: 8),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
               ),
             ),
           ),
