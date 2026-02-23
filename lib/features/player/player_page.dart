@@ -1481,7 +1481,53 @@ class _PlayerPageState extends State<PlayerPage> {
   }
 
   Widget _buildPortraitBody() {
-    return const Center(child: Text('portrait', style: TextStyle(color: Colors.white)));
+    return CustomScrollView(
+      slivers: [
+        // ── Video ──────────────────────────────────────────────────
+        SliverToBoxAdapter(
+          child: AspectRatio(
+            aspectRatio: 16 / 9,
+            child: ColoredBox(
+              color: Colors.black,
+              child: Stack(
+                children: [
+                  MaterialDesktopVideoControlsTheme(
+                    normal: MaterialDesktopVideoControlsThemeData(
+                      topButtonBar: _buildTopButtonBar(),
+                      bottomButtonBar: _buildBottomButtonBar(),
+                    ),
+                    fullscreen: MaterialDesktopVideoControlsThemeData(
+                      topButtonBar: _buildTopButtonBar(),
+                      bottomButtonBar: _buildBottomButtonBar(),
+                    ),
+                    child: Video(controller: _videoController),
+                  ),
+                  if (_isBufferingNow)
+                    Positioned(
+                      top: 16,
+                      right: 16,
+                      child: IgnorePointer(
+                        child: Text(
+                          _networkStatsText(),
+                          style: const TextStyle(
+                            color: Color(0xFFFFB37A),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            shadows: [Shadow(color: Colors.black, blurRadius: 8)],
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
+
+        // placeholder for controls + episodes (next tasks)
+        const SliverToBoxAdapter(child: SizedBox(height: 200)),
+      ],
+    );
   }
 
   @override
