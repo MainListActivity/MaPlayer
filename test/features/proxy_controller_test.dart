@@ -5,3 +5,7 @@
 //
 // Integration tests for the Dart↔Rust FRB wrapper will be added once
 // the full build pipeline (Task 9/10) is verified.
+
+void main() {
+  // Intentionally empty — see comment above.
+}
