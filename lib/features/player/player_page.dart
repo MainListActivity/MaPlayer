@@ -358,6 +358,10 @@ class _PlayerPageState extends State<PlayerPage> {
     PreparedEpisodeSelection prepared,
     ParsedMediaInfo episode,
   ) async {
+    // Remember the user's current cloud variant preference before switching.
+    final previousCloudResolution =
+        _currentCloudVariant?.resolution.toLowerCase();
+
     setState(() {
       _isLoading = true;
       _currentPlayingEpisode = episode;
@@ -371,11 +375,40 @@ class _PlayerPageState extends State<PlayerPage> {
       final media = await _orchestrator.playEpisode(prepared, candidate);
       if (!mounted) return;
 
+      // Try to match the previously selected cloud resolution in the new
+      // episode's variants, so the user's preference is preserved across
+      // episode switches.
+      QuarkPlayableVariant? matchedVariant;
+      if (previousCloudResolution != null && media.variants.isNotEmpty) {
+        matchedVariant = media.variants
+            .where(
+              (v) => v.resolution.toLowerCase() == previousCloudResolution,
+            )
+            .firstOrNull;
+      }
+      final chosenVariant = matchedVariant ?? _defaultCloudVariant(media);
+
+      // When the user had a specific cloud variant preference and we found a
+      // matching variant in the new episode, open the matched variant's URL
+      // instead of the orchestrator's default.
+      final mediaToOpen = matchedVariant != null
+          ? PlayableMedia(
+              url: matchedVariant.url,
+              headers: matchedVariant.headers.isNotEmpty
+                  ? matchedVariant.headers
+                  : media.headers,
+              subtitle: media.subtitle,
+              progressKey: media.progressKey,
+              variants: media.variants,
+              selectedVariant: matchedVariant,
+            )
+          : media;
+
       setState(() {
-        _currentMedia = media;
-        _currentCloudVariant = _defaultCloudVariant(media);
+        _currentMedia = mediaToOpen;
+        _currentCloudVariant = chosenVariant;
       });
-      await _openMedia(media);
+      await _openMedia(mediaToOpen);
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -659,7 +692,13 @@ class _PlayerPageState extends State<PlayerPage> {
     setState(() {
       _isLoading = true;
       _currentMedia = media;
-      _currentCloudVariant = _defaultCloudVariant(media);
+      // Only reset cloud variant when the media doesn't carry an explicit
+      // selection (i.e. the caller hasn't already chosen one).  This ensures
+      // that episode switches and cloud-resolution switches preserve the
+      // user's preference instead of falling back to the default.
+      if (media.selectedVariant == null) {
+        _currentCloudVariant = _defaultCloudVariant(media);
+      }
     });
     try {
       final shouldUseProxy = _shouldUseProxy(media);
@@ -1505,10 +1544,20 @@ class _PlayerPageState extends State<PlayerPage> {
                                     if (onEpisodeSelected != null) {
                                       onEpisodeSelected();
                                     }
-                                    _playParsedEpisode(
-                                      prepared,
-                                      episodesInGroup.first,
-                                    );
+                                    // Try to match the current local
+                                    // resolution in the target group.
+                                    final currentRes =
+                                        _currentPlayingEpisode?.resolution;
+                                    var toPlay = episodesInGroup.first;
+                                    if (currentRes != null) {
+                                      final matched = episodesInGroup
+                                          .where(
+                                            (e) => e.resolution == currentRes,
+                                          )
+                                          .firstOrNull;
+                                      if (matched != null) toPlay = matched;
+                                    }
+                                    _playParsedEpisode(prepared, toPlay);
                                   }
                                 },
                                 child: Container(
