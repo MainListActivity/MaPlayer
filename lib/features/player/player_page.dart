@@ -35,8 +35,6 @@ class PlayerPage extends StatefulWidget {
 }
 
 class _PlayerPageState extends State<PlayerPage> {
-  static const Duration _mouseIdleTimeout = Duration(seconds: 2);
-
   late final MediaKitPlayerController _playerController;
   late final VideoController _videoController;
   late final SharePlayOrchestrator _orchestrator;
@@ -69,9 +67,6 @@ class _PlayerPageState extends State<PlayerPage> {
   String _networkSpeedLabel = '--';
   String _bufferAheadLabel = '预读: --';
   String _proxyModeLabel = '';
-  Timer? _mouseHideTimer;
-  bool _isMouseCursorVisible = true;
-
   void _log(String message) => debugPrint('[PlayerPage] $message');
 
   @override
@@ -96,7 +91,6 @@ class _PlayerPageState extends State<PlayerPage> {
 
   @override
   void dispose() {
-    _mouseHideTimer?.cancel();
     _bufferingSub?.cancel();
     _completedSub?.cancel();
     _playerLogSub?.cancel();
@@ -237,52 +231,6 @@ class _PlayerPageState extends State<PlayerPage> {
   String _networkStatsText() {
     return '网速: $_networkSpeedLabel  ·  $_bufferAheadLabel'
         '${_proxyModeLabel.isEmpty ? '' : '  ·  $_proxyModeLabel'}';
-  }
-
-  bool get _supportsHoverCursor => !Platform.isAndroid && !Platform.isIOS;
-
-  void _markMouseActive() {
-    if (!_supportsHoverCursor) return;
-    if (!_isMouseCursorVisible) {
-      setState(() {
-        _isMouseCursorVisible = true;
-      });
-    }
-    _mouseHideTimer?.cancel();
-    _mouseHideTimer = Timer(_mouseIdleTimeout, () {
-      if (!mounted || !_supportsHoverCursor) return;
-      setState(() {
-        _isMouseCursorVisible = false;
-      });
-    });
-  }
-
-  void _resetMouseCursorOnExit() {
-    if (!_supportsHoverCursor) return;
-    _mouseHideTimer?.cancel();
-    if (!_isMouseCursorVisible) {
-      setState(() {
-        _isMouseCursorVisible = true;
-      });
-    }
-  }
-
-  Widget _wrapVideoWithAutoHideCursor({required Widget child}) {
-    if (!_supportsHoverCursor) return child;
-    return MouseRegion(
-      cursor: _isMouseCursorVisible
-          ? SystemMouseCursors.basic
-          : SystemMouseCursors.none,
-      onEnter: (_) => _markMouseActive(),
-      onHover: (_) => _markMouseActive(),
-      onExit: (_) => _resetMouseCursorOnExit(),
-      child: Listener(
-        behavior: HitTestBehavior.translucent,
-        onPointerDown: (_) => _markMouseActive(),
-        onPointerSignal: (_) => _markMouseActive(),
-        child: child,
-      ),
-    );
   }
 
   Future<void> _prepareAndPlayFromShare(SharePlayRequest request) async {
@@ -1254,21 +1202,22 @@ class _PlayerPageState extends State<PlayerPage> {
               ],
             ),
             clipBehavior: Clip.antiAlias,
-            child: _wrapVideoWithAutoHideCursor(
-              child: Stack(
-                children: [
-                  MaterialDesktopVideoControlsTheme(
-                    normal: MaterialDesktopVideoControlsThemeData(
-                      topButtonBar: _buildTopButtonBar(),
-                      bottomButtonBar: _buildBottomButtonBar(),
-                    ),
-                    fullscreen: MaterialDesktopVideoControlsThemeData(
-                      topButtonBar: _buildTopButtonBar(),
-                      bottomButtonBar: _buildBottomButtonBar(),
-                    ),
-                    child: Video(controller: _videoController),
+            child: Stack(
+              children: [
+                MaterialDesktopVideoControlsTheme(
+                  normal: MaterialDesktopVideoControlsThemeData(
+                    topButtonBar: _buildTopButtonBar(),
+                    bottomButtonBar: _buildBottomButtonBar(),
+                    hideMouseOnControlsRemoval: true,
                   ),
-                  if (_isBufferingNow)
+                  fullscreen: MaterialDesktopVideoControlsThemeData(
+                    topButtonBar: _buildTopButtonBar(),
+                    bottomButtonBar: _buildBottomButtonBar(),
+                    hideMouseOnControlsRemoval: true,
+                  ),
+                  child: Video(controller: _videoController),
+                ),
+                if (_isBufferingNow)
                     Positioned(
                       top: 16,
                       right: 16,
@@ -1286,8 +1235,7 @@ class _PlayerPageState extends State<PlayerPage> {
                         ),
                       ),
                     ),
-                ],
-              ),
+              ],
             ),
           ),
         ),
@@ -1616,23 +1564,24 @@ class _PlayerPageState extends State<PlayerPage> {
             aspectRatio: 16 / 9,
             child: ColoredBox(
               color: Colors.black,
-              child: _wrapVideoWithAutoHideCursor(
-                child: Stack(
-                  children: [
-                    MaterialDesktopVideoControlsTheme(
-                      normal: MaterialDesktopVideoControlsThemeData(
-                        topButtonBar: _buildTopButtonBar(),
-                        bottomButtonBar: _buildBottomButtonBar(),
-                      ),
-                      fullscreen: MaterialDesktopVideoControlsThemeData(
-                        topButtonBar: _buildTopButtonBar(),
-                        bottomButtonBar: _buildBottomButtonBar(),
-                      ),
-                      child: Video(controller: _videoController),
+              child: Stack(
+                children: [
+                  MaterialDesktopVideoControlsTheme(
+                    normal: MaterialDesktopVideoControlsThemeData(
+                      topButtonBar: _buildTopButtonBar(),
+                      bottomButtonBar: _buildBottomButtonBar(),
+                      hideMouseOnControlsRemoval: true,
                     ),
-                    Positioned(
-                      top: 8,
-                      left: 8,
+                    fullscreen: MaterialDesktopVideoControlsThemeData(
+                      topButtonBar: _buildTopButtonBar(),
+                      bottomButtonBar: _buildBottomButtonBar(),
+                      hideMouseOnControlsRemoval: true,
+                    ),
+                    child: Video(controller: _videoController),
+                  ),
+                  Positioned(
+                    top: 8,
+                    left: 8,
                       child: Material(
                         color: Colors.transparent,
                         child: InkWell(
@@ -1678,8 +1627,7 @@ class _PlayerPageState extends State<PlayerPage> {
                           ),
                         ),
                       ),
-                  ],
-                ),
+                ],
               ),
             ),
           ),
