@@ -17,7 +17,7 @@ use tokio::net::TcpListener;
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::{debug, error};
 
-use crate::config::STARTUP_PROBE_CLAMP_BYTES;
+use crate::config::{MAX_OPEN_ENDED_RESPONSE_BYTES, STARTUP_PROBE_CLAMP_BYTES};
 use crate::engine::session::ProxySession;
 
 pub type SessionMap = Arc<RwLock<HashMap<String, Arc<ProxySession>>>>;
@@ -180,11 +180,13 @@ async fn stream_handler(
                 )
                     .into_response();
             }
-            // Many players use open-ended ranges for both startup and seeking.
-            // Keep every open-ended response small, otherwise we may wait for a
-            // huge cached window (e.g. 64MB) before writing first byte.
-            let clamp_bytes = STARTUP_PROBE_CLAMP_BYTES;
-            let end = (start + clamp_bytes).min(total);
+            // Use a large window (64 MB) instead of the tiny startup probe
+            // (512 KB).  The old 512 KB clamp caused ffmpeg to log
+            // "Stream ends prematurely" on every request.  We can't promise
+            // the entire remaining file because seek-triggered chunk
+            // cancellation could abort the stream mid-transfer, violating
+            // the Content-Length contract and corrupting the decode.
+            let end = (start + MAX_OPEN_ENDED_RESPONSE_BYTES).min(total);
             (start, end, true)
         }
         Some(ParsedRange::Suffix { len }) => {
