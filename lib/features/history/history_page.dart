@@ -1,8 +1,8 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import 'package:ma_palyer/app/app_route.dart';
+import 'package:ma_palyer/features/history/cover_cache.dart';
 import 'package:ma_palyer/features/history/history_cover_utils.dart';
 import 'package:ma_palyer/features/history/play_history_models.dart';
 import 'package:ma_palyer/features/history/play_history_repository.dart';
@@ -188,6 +188,7 @@ class _HistoryPageState extends State<HistoryPage> with RouteAware {
                           ? '${item.lastEpisodeName ?? '点击选集'} · ${_formatPosition(pos)}'
                           : (item.lastEpisodeName ?? '点击选集');
                       return InkWell(
+                        key: ValueKey(item.shareUrl),
                         onTap: _isBusy ? null : () => _openRecent(item),
                         borderRadius: BorderRadius.circular(12),
                         child: Container(
@@ -270,11 +271,18 @@ class _HistoryPageState extends State<HistoryPage> with RouteAware {
   }
 }
 
-/// Displays a cover image. For Baidu image proxy URLs (which return
-/// `Content-Disposition: attachment`), fetches bytes manually and uses
-/// [Image.memory] since [Image.network] treats attachment responses as empty.
+/// Displays a cover image with disk+memory caching.
+///
+/// All images are fetched via [CoverCache] so they are downloaded only once
+/// and survive list reorders / widget rebuilds. For URLs that Flutter's
+/// [Image.network] cannot handle (e.g. Baidu proxy with
+/// `Content-Disposition: attachment`), the cached bytes are rendered via
+/// [Image.memory].
 class _CoverImage extends StatefulWidget {
-  const _CoverImage({required this.url, required this.headers});
+  const _CoverImage({
+    required this.url,
+    required this.headers,
+  });
 
   final String url;
   final Map<String, String> headers;
@@ -286,7 +294,7 @@ class _CoverImage extends StatefulWidget {
 class _CoverImageState extends State<_CoverImage> {
   Uint8List? _bytes;
   bool _failed = false;
-  bool _needsManualFetch = false;
+  bool _loading = true;
 
   static const _fallback = Center(
     child: Icon(Icons.movie, size: 48, color: Colors.white24),
@@ -295,53 +303,67 @@ class _CoverImageState extends State<_CoverImage> {
   @override
   void initState() {
     super.initState();
-    final uri = Uri.tryParse(widget.url);
-    _needsManualFetch =
-        uri != null && uri.host.toLowerCase() == 'image.baidu.com';
-    if (_needsManualFetch) {
-      _fetchBytes();
+    _load();
+  }
+
+  @override
+  void didUpdateWidget(covariant _CoverImage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.url != widget.url) {
+      _bytes = null;
+      _failed = false;
+      _loading = true;
+      _load();
     }
   }
 
-  Future<void> _fetchBytes() async {
-    try {
-      final response = await http.get(
-        Uri.parse(widget.url),
-        headers: widget.headers.isNotEmpty ? widget.headers : null,
-      );
-      if (!mounted) return;
-      if (response.statusCode == 200 && response.bodyBytes.isNotEmpty) {
-        setState(() => _bytes = response.bodyBytes);
-      } else {
-        setState(() => _failed = true);
-      }
-    } catch (_) {
-      if (mounted) setState(() => _failed = true);
+  Future<void> _load() async {
+    final cache = CoverCache.instance;
+    final url = widget.url;
+
+    // 1. Try cache (memory → disk).
+    var bytes = await cache.get(url);
+    if (!mounted || url != widget.url) return;
+    if (bytes != null) {
+      setState(() {
+        _bytes = bytes;
+        _loading = false;
+      });
+      return;
+    }
+
+    // 2. Fetch from network and cache.
+    bytes = await cache.fetch(
+      url,
+      headers: widget.headers.isNotEmpty ? widget.headers : null,
+    );
+    if (!mounted || url != widget.url) return;
+    if (bytes != null) {
+      setState(() {
+        _bytes = bytes;
+        _loading = false;
+      });
+    } else {
+      setState(() {
+        _failed = true;
+        _loading = false;
+      });
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_needsManualFetch) {
-      if (_failed) return _fallback;
-      if (_bytes == null) {
-        return const Center(
-          child: SizedBox(
-            width: 24,
-            height: 24,
-            child: CircularProgressIndicator(strokeWidth: 2),
-          ),
-        );
-      }
-      return Image.memory(_bytes!, fit: BoxFit.cover);
+    if (_failed) return _fallback;
+    if (_loading || _bytes == null) {
+      return const Center(
+        child: SizedBox(
+          width: 24,
+          height: 24,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+      );
     }
-
-    return Image.network(
-      widget.url,
-      headers: widget.headers.isEmpty ? null : widget.headers,
-      fit: BoxFit.cover,
-      errorBuilder: (_, __, ___) => _fallback,
-    );
+    return Image.memory(_bytes!, fit: BoxFit.cover);
   }
 }
 
