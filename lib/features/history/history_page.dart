@@ -1,4 +1,7 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:ma_palyer/app/app_route.dart';
 import 'package:ma_palyer/features/history/history_cover_utils.dart';
 import 'package:ma_palyer/features/history/play_history_models.dart';
@@ -202,24 +205,9 @@ class _HistoryPageState extends State<HistoryPage> with RouteAware {
                                 child: Container(
                                   color: const Color(0xFF101622),
                                   child: normalizedCover.coverUrl.isNotEmpty
-                                      ? Image.network(
-                                          normalizedCover.coverUrl,
-                                          headers:
-                                              normalizedCover
-                                                  .coverHeaders
-                                                  .isEmpty
-                                              ? null
-                                              : normalizedCover.coverHeaders,
-                                          fit: BoxFit.cover,
-                                          errorBuilder:
-                                              (context, error, stackTrace) =>
-                                                  const Center(
-                                                    child: Icon(
-                                                      Icons.movie,
-                                                      size: 48,
-                                                      color: Colors.white24,
-                                                    ),
-                                                  ),
+                                      ? _CoverImage(
+                                          url: normalizedCover.coverUrl,
+                                          headers: normalizedCover.coverHeaders,
                                         )
                                       : const Center(
                                           child: Icon(
@@ -278,6 +266,81 @@ class _HistoryPageState extends State<HistoryPage> with RouteAware {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Displays a cover image. For Baidu image proxy URLs (which return
+/// `Content-Disposition: attachment`), fetches bytes manually and uses
+/// [Image.memory] since [Image.network] treats attachment responses as empty.
+class _CoverImage extends StatefulWidget {
+  const _CoverImage({required this.url, required this.headers});
+
+  final String url;
+  final Map<String, String> headers;
+
+  @override
+  State<_CoverImage> createState() => _CoverImageState();
+}
+
+class _CoverImageState extends State<_CoverImage> {
+  Uint8List? _bytes;
+  bool _failed = false;
+  bool _needsManualFetch = false;
+
+  static const _fallback = Center(
+    child: Icon(Icons.movie, size: 48, color: Colors.white24),
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    final uri = Uri.tryParse(widget.url);
+    _needsManualFetch =
+        uri != null && uri.host.toLowerCase() == 'image.baidu.com';
+    if (_needsManualFetch) {
+      _fetchBytes();
+    }
+  }
+
+  Future<void> _fetchBytes() async {
+    try {
+      final response = await http.get(
+        Uri.parse(widget.url),
+        headers: widget.headers.isNotEmpty ? widget.headers : null,
+      );
+      if (!mounted) return;
+      if (response.statusCode == 200 && response.bodyBytes.isNotEmpty) {
+        setState(() => _bytes = response.bodyBytes);
+      } else {
+        setState(() => _failed = true);
+      }
+    } catch (_) {
+      if (mounted) setState(() => _failed = true);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_needsManualFetch) {
+      if (_failed) return _fallback;
+      if (_bytes == null) {
+        return const Center(
+          child: SizedBox(
+            width: 24,
+            height: 24,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        );
+      }
+      return Image.memory(_bytes!, fit: BoxFit.cover);
+    }
+
+    return Image.network(
+      widget.url,
+      headers: widget.headers.isEmpty ? null : widget.headers,
+      fit: BoxFit.cover,
+      errorBuilder: (_, __, ___) => _fallback,
     );
   }
 }

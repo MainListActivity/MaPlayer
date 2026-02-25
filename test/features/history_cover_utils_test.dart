@@ -12,7 +12,7 @@ void main() {
         result.coverUrl,
         'https://image.baidu.com/search/down?url=https%3A%2F%2Fimg9.doubanio.com%2Fview%2Fphoto%2Fs_ratio_poster%2Fpublic%2Fp2926587194.webp',
       );
-      expect(result.coverHeaders, isEmpty);
+      expect(result.coverHeaders, {'Referer': 'https://image.baidu.com/'});
     });
 
     test('preserves existing Baidu proxy URL unchanged', () {
@@ -24,6 +24,21 @@ void main() {
       );
 
       expect(result.coverUrl, proxyUrl);
+      expect(result.coverHeaders, {'Referer': 'https://image.baidu.com/'});
+    });
+
+    test('sets Baidu Referer for Baidu proxy URL with mismatched headers', () {
+      const proxyUrl =
+          'https://image.baidu.com/search/down?url=https://img1.doubanio.com/view/photo/s_ratio_poster/public/p2929342269.webp';
+      final result = normalizeHistoryCover(
+        coverUrl: proxyUrl,
+        coverHeaders: {
+          'Referer': 'https://mihdr.top/index.php/vod/detail/id/19363.html',
+          'Origin': 'https://mihdr.top',
+        },
+      );
+
+      expect(result.coverHeaders, {'Referer': 'https://image.baidu.com/'});
     });
 
     test('returns empty for empty input', () {

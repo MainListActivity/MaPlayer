@@ -14,7 +14,8 @@
 }
 
 String _normalizeCoverUrl(String raw) {
-  final trimmed = raw.trim();
+  // Remove whitespace/newlines that may be embedded in URLs extracted from HTML.
+  final trimmed = raw.replaceAll(RegExp(r'\s+'), '').trim();
   if (trimmed.isEmpty) return '';
   final uri = Uri.tryParse(trimmed);
   if (uri == null) return trimmed;
@@ -46,7 +47,19 @@ Map<String, String> _normalizeCoverHeaders({
     }
   }
 
-  final coverHost = Uri.tryParse(coverUrl)?.host.toLowerCase() ?? '';
+  final coverUri = Uri.tryParse(coverUrl);
+  final coverHost = coverUri?.host.toLowerCase() ?? '';
+
+  // For Baidu image proxy URLs, override headers with Baidu-appropriate values
+  // so the proxy returns a valid image response.
+  if (coverHost == 'image.baidu.com') {
+    return <String, String>{
+      'Referer': 'https://image.baidu.com/',
+      'User-Agent':
+          'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    };
+  }
+
   if (base.isEmpty) return const <String, String>{};
   final refererHost =
       Uri.tryParse(base['Referer'] ?? '')?.host.toLowerCase() ?? '';
