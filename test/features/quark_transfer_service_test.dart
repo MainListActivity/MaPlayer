@@ -494,7 +494,7 @@ void main() {
   });
 
   test(
-    'resolvePlayableFile keeps m3u8 variant as default when raw exists',
+    'resolvePlayableFile prefers raw variant as default when raw exists',
     () async {
       final authService = _FakeAuthService(
         QuarkAuthState(
@@ -550,8 +550,8 @@ void main() {
 
       final playable = await service.resolvePlayableFile('file-1');
 
-      expect(playable.selectedVariant?.resolution, 'normal');
-      expect(playable.url, 'https://video.example.com/normal.m3u8');
+      expect(playable.selectedVariant?.resolution, 'raw');
+      expect(playable.url, 'https://video.example.com/raw.mp4');
       expect(playable.variants.map((e) => e.resolution), contains('raw'));
     },
   );

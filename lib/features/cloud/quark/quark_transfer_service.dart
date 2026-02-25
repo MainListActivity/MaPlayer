@@ -1128,7 +1128,15 @@ class QuarkTransferService {
   QuarkPlayableVariant _pickPreferredVariant(
     List<QuarkPlayableVariant> variants,
   ) {
-    const preferred = <String>['4k', '2k', 'super', 'high', 'normal', 'low'];
+    const preferred = <String>[
+      'raw',
+      '4k',
+      '2k',
+      'super',
+      'high',
+      'normal',
+      'low',
+    ];
     for (final resolution in preferred) {
       for (final variant in variants) {
         if (variant.resolution.toLowerCase() == resolution) {

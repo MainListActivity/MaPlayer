@@ -42,7 +42,6 @@ class _PlayerPageState extends State<PlayerPage> {
   final _historyRepository = PlayHistoryRepository();
 
   bool _isLoading = false;
-  String? _errorMessage;
 
   Map<String, List<ParsedMediaInfo>> _groupedEpisodes = {};
   List<String> _groupKeys = []; // Ordered group keys (e.g. "Season-Episode")
@@ -68,6 +67,18 @@ class _PlayerPageState extends State<PlayerPage> {
   String _bufferAheadLabel = '预读: --';
   String _proxyModeLabel = '';
   void _log(String message) => debugPrint('[PlayerPage] $message');
+
+  void _showError(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.redAccent,
+        duration: const Duration(seconds: 4),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
 
   @override
   void initState() {
@@ -236,7 +247,6 @@ class _PlayerPageState extends State<PlayerPage> {
   Future<void> _prepareAndPlayFromShare(SharePlayRequest request) async {
     setState(() {
       _isLoading = true;
-      _errorMessage = null;
     });
 
     try {
@@ -289,16 +299,16 @@ class _PlayerPageState extends State<PlayerPage> {
         await _playParsedEpisode(prepared, toPlay);
       } else {
         setState(() {
-          _errorMessage = '未找到可播放的文件';
           _isLoading = false;
         });
+        _showError('未找到可播放的文件');
       }
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _errorMessage = '加载失败: $e';
         _isLoading = false;
       });
+      _showError('加载失败: $e');
     }
   }
 
@@ -360,9 +370,9 @@ class _PlayerPageState extends State<PlayerPage> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _errorMessage = '播放失败: $e';
         _isLoading = false;
       });
+      _showError('播放失败: $e');
     }
   }
 
@@ -585,9 +595,7 @@ class _PlayerPageState extends State<PlayerPage> {
       }
     } catch (e) {
       if (!mounted) return;
-      setState(() {
-        _errorMessage = '切换网盘清晰度失败: $e';
-      });
+      _showError('切换网盘清晰度失败: $e');
     } finally {
       if (mounted) {
         setState(() {
@@ -725,9 +733,7 @@ class _PlayerPageState extends State<PlayerPage> {
     } catch (e) {
       _log('open media failed: $e');
       if (!mounted) return;
-      setState(() {
-        _errorMessage = '播放失败: $e';
-      });
+      _showError('播放失败: $e');
     } finally {
       if (mounted) {
         setState(() {
@@ -754,7 +760,15 @@ class _PlayerPageState extends State<PlayerPage> {
     if (media.variants.isEmpty) {
       return null;
     }
-    const preferred = <String>['4k', '2k', 'super', 'high', 'normal', 'low'];
+    const preferred = <String>[
+      'raw',
+      '4k',
+      '2k',
+      'super',
+      'high',
+      'normal',
+      'low',
+    ];
     for (final resolution in preferred) {
       for (final variant in media.variants) {
         if (variant.resolution.toLowerCase() == resolution) {
@@ -821,9 +835,14 @@ class _PlayerPageState extends State<PlayerPage> {
     _lastMediaKitAuthRecoverAt = DateTime.now();
     try {
       if (mounted) {
-        setState(() {
-          _errorMessage = '检测到网盘鉴权失效(HTTP 412/401/403)，正在重新认证...';
-        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('检测到网盘鉴权失效(HTTP 412/401/403)，正在重新认证...'),
+            backgroundColor: Colors.orangeAccent,
+            duration: Duration(seconds: 3),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
       }
       final nextHeaders = await _handleProxySourceAuthRejected();
       if (!mounted || nextHeaders == null || nextHeaders.isEmpty) return;
@@ -1833,23 +1852,18 @@ class _PlayerPageState extends State<PlayerPage> {
       );
     }
 
-    if (_errorMessage != null) {
+    if (_groupedEpisodes.isEmpty && _currentMedia == null) {
       return Scaffold(
         backgroundColor: const Color(0xFF101622),
         body: Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(
-                Icons.error_outline,
-                color: Colors.redAccent,
-                size: 48,
-              ),
+              const Icon(Icons.video_library_outlined,
+                  color: Colors.white38, size: 48),
               const SizedBox(height: 16),
-              Text(
-                _errorMessage!,
-                style: const TextStyle(color: Colors.redAccent, fontSize: 16),
-              ),
+              const Text('暂无可播放内容',
+                  style: TextStyle(color: Colors.white54, fontSize: 16)),
               const SizedBox(height: 16),
               ElevatedButton(
                 onPressed: () => Navigator.pop(context),
