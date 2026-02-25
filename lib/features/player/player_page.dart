@@ -317,8 +317,8 @@ class _PlayerPageState extends State<PlayerPage> {
     ParsedMediaInfo episode,
   ) async {
     // Remember the user's current cloud variant preference before switching.
-    final previousCloudResolution =
-        _currentCloudVariant?.resolution.toLowerCase();
+    final previousCloudResolution = _currentCloudVariant?.resolution
+        .toLowerCase();
 
     setState(() {
       _isLoading = true;
@@ -339,9 +339,7 @@ class _PlayerPageState extends State<PlayerPage> {
       QuarkPlayableVariant? matchedVariant;
       if (previousCloudResolution != null && media.variants.isNotEmpty) {
         matchedVariant = media.variants
-            .where(
-              (v) => v.resolution.toLowerCase() == previousCloudResolution,
-            )
+            .where((v) => v.resolution.toLowerCase() == previousCloudResolution)
             .firstOrNull;
       }
       final chosenVariant = matchedVariant ?? _defaultCloudVariant(media);
@@ -1237,23 +1235,21 @@ class _PlayerPageState extends State<PlayerPage> {
                   child: Video(controller: _videoController),
                 ),
                 if (_isBufferingNow)
-                    Positioned(
-                      top: 16,
-                      right: 16,
-                      child: IgnorePointer(
-                        child: Text(
-                          _networkStatsText(),
-                          style: const TextStyle(
-                            color: Color(0xFFFFB37A),
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            shadows: [
-                              Shadow(color: Colors.black, blurRadius: 8),
-                            ],
-                          ),
+                  Positioned(
+                    top: 16,
+                    right: 16,
+                    child: IgnorePointer(
+                      child: Text(
+                        _networkStatsText(),
+                        style: const TextStyle(
+                          color: Color(0xFFFFB37A),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          shadows: [Shadow(color: Colors.black, blurRadius: 8)],
                         ),
                       ),
                     ),
+                  ),
               ],
             ),
           ),
@@ -1394,69 +1390,69 @@ class _PlayerPageState extends State<PlayerPage> {
       appendMetaText(category);
     }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        // Video Info Card
-        Container(
-          padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            color: const Color(0xFF1A2332),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: const Color(0xFF232F48)),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                  height: 1.2,
-                ),
-              ),
-              if (hasMeta) ...[
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    ...metaLeftWidgets,
-                    if (rating.isNotEmpty) ...[
-                      if (metaLeftWidgets.isNotEmpty) const Spacer(),
-                      const Icon(Icons.star, color: Colors.amber, size: 16),
-                      const SizedBox(width: 4),
-                      Text(
-                        rating,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ],
-              if (intro.isNotEmpty) ...[
-                const SizedBox(height: 16),
+    return SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Video Info Card
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1A2332),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFF232F48)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
                 Text(
-                  intro,
+                  title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    color: Colors.white70,
-                    height: 1.5,
-                    fontSize: 13,
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                    height: 1.2,
                   ),
                 ),
+                if (hasMeta) ...[
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      ...metaLeftWidgets,
+                      if (rating.isNotEmpty) ...[
+                        if (metaLeftWidgets.isNotEmpty) const Spacer(),
+                        const Icon(Icons.star, color: Colors.amber, size: 16),
+                        const SizedBox(width: 4),
+                        Text(
+                          rating,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ],
+                if (intro.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  Text(
+                    intro,
+                    style: const TextStyle(
+                      color: Colors.white70,
+                      height: 1.5,
+                      fontSize: 13,
+                    ),
+                  ),
+                ],
               ],
-            ],
+            ),
           ),
-        ),
-        const SizedBox(height: 16),
-        // Episodes Placeholder Card
-        Expanded(
-          child: Container(
+          const SizedBox(height: 16),
+          // Episodes Placeholder Card
+          Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               color: const Color(0xFF1A2332),
@@ -1475,102 +1471,99 @@ class _PlayerPageState extends State<PlayerPage> {
                   ),
                 ),
                 const SizedBox(height: 16),
-                Expanded(
-                  child: _groupKeys.isEmpty
-                      ? const Center(
-                          child: Text(
-                            '未找到剧集',
-                            style: TextStyle(color: Colors.white70),
-                          ),
-                        )
-                      : SingleChildScrollView(
-                          child: GridView.builder(
-                            shrinkWrap: true,
-                            physics: const NeverScrollableScrollPhysics(),
-                            gridDelegate:
-                                const SliverGridDelegateWithFixedCrossAxisCount(
-                                  crossAxisCount: 5,
-                                  mainAxisSpacing: 8,
-                                  crossAxisSpacing: 8,
-                                  childAspectRatio: 1,
-                                ),
-                            itemCount: _groupKeys.length,
-                            itemBuilder: (context, index) {
-                              final key = _groupKeys[index];
-                              final isPlaying = key == _currentGroupKey;
-                              final episodesInGroup =
-                                  _groupedEpisodes[key] ?? [];
-                              final baseEpisode = episodesInGroup.firstOrNull;
+                if (_groupKeys.isEmpty)
+                  const Center(
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(vertical: 24),
+                      child: Text(
+                        '未找到剧集',
+                        style: TextStyle(color: Colors.white70),
+                      ),
+                    ),
+                  )
+                else
+                  GridView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 5,
+                          mainAxisSpacing: 8,
+                          crossAxisSpacing: 8,
+                          childAspectRatio: 1,
+                        ),
+                    itemCount: _groupKeys.length,
+                    itemBuilder: (context, index) {
+                      final key = _groupKeys[index];
+                      final isPlaying = key == _currentGroupKey;
+                      final episodesInGroup = _groupedEpisodes[key] ?? [];
+                      final baseEpisode = episodesInGroup.firstOrNull;
 
-                              return InkWell(
-                                onTap: () {
-                                  final prepared = _preparedSelection;
-                                  if (prepared == null) return;
-                                  if (episodesInGroup.isNotEmpty &&
-                                      !isPlaying) {
-                                    if (onEpisodeSelected != null) {
-                                      onEpisodeSelected();
-                                    }
-                                    // Try to match the current local
-                                    // resolution in the target group.
-                                    final currentRes =
-                                        _currentPlayingEpisode?.resolution;
-                                    var toPlay = episodesInGroup.first;
-                                    if (currentRes != null) {
-                                      final matched = episodesInGroup
-                                          .where(
-                                            (e) => e.resolution == currentRes,
-                                          )
-                                          .firstOrNull;
-                                      if (matched != null) toPlay = matched;
-                                    }
-                                    _playParsedEpisode(prepared, toPlay);
-                                  }
-                                },
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    color: isPlaying
-                                        ? const Color(0xFFF47B25)
-                                        : const Color(0xFF101622),
-                                    borderRadius: BorderRadius.circular(8),
-                                    border: Border.all(
-                                      color: isPlaying
-                                          ? Colors.transparent
-                                          : const Color(0xFF2E3B56),
+                      return InkWell(
+                        onTap: () {
+                          final prepared = _preparedSelection;
+                          if (prepared == null) return;
+                          if (episodesInGroup.isNotEmpty && !isPlaying) {
+                            if (onEpisodeSelected != null) {
+                              onEpisodeSelected();
+                            }
+                            // Try to match the current local
+                            // resolution in the target group.
+                            final currentRes =
+                                _currentPlayingEpisode?.resolution;
+                            var toPlay = episodesInGroup.first;
+                            if (currentRes != null) {
+                              final matched = episodesInGroup
+                                  .where((e) => e.resolution == currentRes)
+                                  .firstOrNull;
+                              if (matched != null) toPlay = matched;
+                            }
+                            _playParsedEpisode(prepared, toPlay);
+                          }
+                        },
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: isPlaying
+                                ? const Color(0xFFF47B25)
+                                : const Color(0xFF101622),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: isPlaying
+                                  ? Colors.transparent
+                                  : const Color(0xFF2E3B56),
+                            ),
+                          ),
+                          alignment: Alignment.center,
+                          child: isPlaying
+                              ? const Icon(
+                                  Icons.equalizer,
+                                  color: Colors.white,
+                                  size: 20,
+                                )
+                              : FittedBox(
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(4.0),
+                                    child: Text(
+                                      baseEpisode?.displayTitle ??
+                                          '${index + 1}',
+                                      style: const TextStyle(
+                                        color: Colors.white70,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 12,
+                                      ),
                                     ),
                                   ),
-                                  alignment: Alignment.center,
-                                  child: isPlaying
-                                      ? const Icon(
-                                          Icons.equalizer,
-                                          color: Colors.white,
-                                          size: 20,
-                                        )
-                                      : FittedBox(
-                                          child: Padding(
-                                            padding: const EdgeInsets.all(4.0),
-                                            child: Text(
-                                              baseEpisode?.displayTitle ??
-                                                  '${index + 1}',
-                                              style: const TextStyle(
-                                                color: Colors.white70,
-                                                fontWeight: FontWeight.bold,
-                                                fontSize: 12,
-                                              ),
-                                            ),
-                                          ),
-                                        ),
                                 ),
-                              );
-                            },
-                          ),
                         ),
-                ),
+                      );
+                    },
+                  ),
               ],
             ),
           ),
-        ),
-      ],
+          const SizedBox(height: 16),
+        ],
+      ),
     );
   }
 
@@ -1601,51 +1594,51 @@ class _PlayerPageState extends State<PlayerPage> {
                   Positioned(
                     top: 8,
                     left: 8,
-                      child: Material(
-                        color: Colors.transparent,
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(20),
-                          onTap: () async {
-                            final navigator = Navigator.of(context);
-                            final popped = await navigator.maybePop();
-                            if (!popped && mounted) {
-                              navigator.pushReplacementNamed(AppRoutes.home);
-                            }
-                          },
-                          child: Container(
-                            width: 36,
-                            height: 36,
-                            decoration: BoxDecoration(
-                              color: Colors.black.withValues(alpha: 0.45),
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(
-                              Icons.arrow_back_ios_new_rounded,
-                              color: Colors.white,
-                              size: 16,
-                            ),
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(20),
+                        onTap: () async {
+                          final navigator = Navigator.of(context);
+                          final popped = await navigator.maybePop();
+                          if (!popped && mounted) {
+                            navigator.pushReplacementNamed(AppRoutes.home);
+                          }
+                        },
+                        child: Container(
+                          width: 36,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.45),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.arrow_back_ios_new_rounded,
+                            color: Colors.white,
+                            size: 16,
                           ),
                         ),
                       ),
                     ),
-                    if (_isBufferingNow)
-                      Positioned(
-                        top: 16,
-                        right: 16,
-                        child: IgnorePointer(
-                          child: Text(
-                            _networkStatsText(),
-                            style: const TextStyle(
-                              color: Color(0xFFFFB37A),
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              shadows: [
-                                Shadow(color: Colors.black, blurRadius: 8),
-                              ],
-                            ),
+                  ),
+                  if (_isBufferingNow)
+                    Positioned(
+                      top: 16,
+                      right: 16,
+                      child: IgnorePointer(
+                        child: Text(
+                          _networkStatsText(),
+                          style: const TextStyle(
+                            color: Color(0xFFFFB37A),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            shadows: [
+                              Shadow(color: Colors.black, blurRadius: 8),
+                            ],
                           ),
                         ),
                       ),
+                    ),
                 ],
               ),
             ),
@@ -1859,11 +1852,16 @@ class _PlayerPageState extends State<PlayerPage> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.video_library_outlined,
-                  color: Colors.white38, size: 48),
+              const Icon(
+                Icons.video_library_outlined,
+                color: Colors.white38,
+                size: 48,
+              ),
               const SizedBox(height: 16),
-              const Text('暂无可播放内容',
-                  style: TextStyle(color: Colors.white54, fontSize: 16)),
+              const Text(
+                '暂无可播放内容',
+                style: TextStyle(color: Colors.white54, fontSize: 16),
+              ),
               const SizedBox(height: 16),
               ElevatedButton(
                 onPressed: () => Navigator.pop(context),
