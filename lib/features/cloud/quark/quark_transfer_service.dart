@@ -474,6 +474,22 @@ class QuarkTransferService {
       );
     }
 
+    // Cloud play link failed — fall back to RAW (download link).
+    final rawFallback = await _resolveRawVariant(
+      auth: auth,
+      savedFileId: savedFileId,
+    );
+    if (rawFallback != null) {
+      _logTransfer('resolve playable: cloud play failed, falling back to raw variant');
+      return QuarkPlayableFile(
+        url: rawFallback.url,
+        headers: rawFallback.headers,
+        variants: [rawFallback],
+        selectedVariant: rawFallback,
+        subtitle: null,
+      );
+    }
+
     if (lastResponse != null &&
         lastResponse.statusCode >= 200 &&
         lastResponse.statusCode < 300) {
