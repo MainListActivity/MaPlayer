@@ -16,6 +16,7 @@
     detailClickHooked: false,
     bodySiblingCleanupHooked: false,
     bodySiblingCleanupTimerStarted: false,
+    antiDevToolsGuardInstalled: false,
   };
   window[BRIDGE_STATE_KEY] = state;
 
@@ -36,6 +37,349 @@
         return;
       }
       window.flutter_inappwebview.callHandler(handlerName, payload);
+    } catch (_) {
+      // no-op
+    }
+  }
+
+  function isLikelyDevToolsProbeSource(source) {
+    const text = String(source || '');
+    if (!text) return false;
+    return (
+      /\.toString\s*=\s*function/.test(text) &&
+      /console\.(log|debug|dir|info|warn)\s*\(/.test(text)
+    );
+  }
+
+  function sanitizeConsoleArg(arg) {
+    if (!arg || (typeof arg !== 'object' && typeof arg !== 'function')) {
+      return arg;
+    }
+    try {
+      const hasOwnToString =
+        Object.prototype.hasOwnProperty.call(arg, 'toString') &&
+        typeof arg.toString === 'function';
+      if (!hasOwnToString) return arg;
+      const tag = Object.prototype.toString.call(arg);
+      return '[ma-player-console-guard ' + tag + ']';
+    } catch (_) {
+      return '[ma-player-console-guard]';
+    }
+  }
+
+  function captureStack() {
+    try {
+      return String(new Error().stack || '');
+    } catch (_) {
+      return '';
+    }
+  }
+
+  function isSuspiciousMutationStack(stack) {
+    const text = String(stack || '');
+    if (!text) return false;
+    if (/\bdetectDevTools\b/i.test(text)) return true;
+    if (/\btoString\b/i.test(text) && /\b(console|devtools|debugger|inspect)\b/i.test(text)) {
+      return true;
+    }
+    return false;
+  }
+
+  function isCriticalMutationTarget(target) {
+    if (!target) return false;
+    return (
+      target === document ||
+      target === document.body ||
+      target === document.documentElement
+    );
+  }
+
+  function shouldBlockMutationForTarget(target) {
+    if (!isCriticalMutationTarget(target)) return false;
+    return isSuspiciousMutationStack(captureStack());
+  }
+
+  function wrapGuardedMethod(owner, methodName, blocker, fallback) {
+    if (!owner) return;
+    const raw = owner[methodName];
+    if (typeof raw !== 'function') return;
+    owner[methodName] = function () {
+      let blocked = false;
+      try {
+        blocked = !!blocker.call(this, arguments);
+      } catch (_) {
+        blocked = false;
+      }
+      if (blocked) {
+        if (typeof fallback === 'function') {
+          return fallback.call(this, arguments);
+        }
+        return undefined;
+      }
+      return raw.apply(this, arguments);
+    };
+  }
+
+  function guardSetter(proto, propName, shouldBlockSetter) {
+    if (!proto || !propName) return;
+    const descriptor = Object.getOwnPropertyDescriptor(proto, propName);
+    if (!descriptor || typeof descriptor.set !== 'function') return;
+    Object.defineProperty(proto, propName, {
+      configurable: true,
+      enumerable: descriptor.enumerable,
+      get: descriptor.get,
+      set: function (value) {
+        let blocked = false;
+        try {
+          blocked = !!shouldBlockSetter.call(this, value);
+        } catch (_) {
+          blocked = false;
+        }
+        if (blocked) return;
+        return descriptor.set.call(this, value);
+      },
+    });
+  }
+
+  function installAntiDevToolsGuard() {
+    if (state.antiDevToolsGuardInstalled) return;
+    state.antiDevToolsGuardInstalled = true;
+
+    try {
+      if (typeof window.setInterval === 'function') {
+        const rawSetInterval = window.setInterval;
+        window.setInterval = function (handler) {
+          try {
+            const source =
+              typeof handler === 'function'
+                ? Function.prototype.toString.call(handler)
+                : String(handler || '');
+            if (isLikelyDevToolsProbeSource(source)) {
+              return 0;
+            }
+          } catch (_) {
+            // no-op
+          }
+          return rawSetInterval.apply(this, arguments);
+        };
+      }
+    } catch (_) {
+      // no-op
+    }
+
+    try {
+      if (typeof window.setTimeout === 'function') {
+        const rawSetTimeout = window.setTimeout;
+        window.setTimeout = function (handler) {
+          try {
+            const source =
+              typeof handler === 'function'
+                ? Function.prototype.toString.call(handler)
+                : String(handler || '');
+            if (isLikelyDevToolsProbeSource(source)) {
+              return 0;
+            }
+          } catch (_) {
+            // no-op
+          }
+          return rawSetTimeout.apply(this, arguments);
+        };
+      }
+    } catch (_) {
+      // no-op
+    }
+
+    try {
+      if (window.console && typeof window.console === 'object') {
+        ['log', 'debug', 'dir', 'info', 'warn'].forEach(function (methodName) {
+          const method = window.console[methodName];
+          if (typeof method !== 'function') return;
+          window.console[methodName] = function () {
+            const safeArgs = Array.prototype.map.call(arguments, sanitizeConsoleArg);
+            return method.apply(this, safeArgs);
+          };
+        });
+      }
+    } catch (_) {
+      // no-op
+    }
+
+    try {
+      if (typeof window.alert === 'function') {
+        window.alert = function () {
+          return undefined;
+        };
+      }
+    } catch (_) {
+      // no-op
+    }
+
+    try {
+      guardSetter(Element.prototype, 'innerHTML', function () {
+        return shouldBlockMutationForTarget(this);
+      });
+    } catch (_) {
+      // no-op
+    }
+
+    try {
+      guardSetter(Element.prototype, 'outerHTML', function () {
+        return shouldBlockMutationForTarget(this);
+      });
+    } catch (_) {
+      // no-op
+    }
+
+    try {
+      guardSetter(Node.prototype, 'textContent', function () {
+        return shouldBlockMutationForTarget(this);
+      });
+    } catch (_) {
+      // no-op
+    }
+
+    try {
+      if (typeof HTMLElement !== 'undefined') {
+        guardSetter(HTMLElement.prototype, 'innerText', function () {
+          return shouldBlockMutationForTarget(this);
+        });
+      }
+    } catch (_) {
+      // no-op
+    }
+
+    try {
+      wrapGuardedMethod(
+        Element.prototype,
+        'insertAdjacentHTML',
+        function () {
+          return shouldBlockMutationForTarget(this);
+        }
+      );
+    } catch (_) {
+      // no-op
+    }
+
+    try {
+      wrapGuardedMethod(
+        Document.prototype,
+        'write',
+        function () {
+          return shouldBlockMutationForTarget(this);
+        }
+      );
+      wrapGuardedMethod(
+        Document.prototype,
+        'writeln',
+        function () {
+          return shouldBlockMutationForTarget(this);
+        }
+      );
+      wrapGuardedMethod(
+        Document.prototype,
+        'open',
+        function () {
+          return shouldBlockMutationForTarget(this);
+        },
+        function () {
+          return this;
+        }
+      );
+      wrapGuardedMethod(
+        Document.prototype,
+        'close',
+        function () {
+          return shouldBlockMutationForTarget(this);
+        }
+      );
+    } catch (_) {
+      // no-op
+    }
+
+    try {
+      wrapGuardedMethod(
+        Node.prototype,
+        'replaceChild',
+        function (args) {
+          const oldChild = args && args.length > 1 ? args[1] : null;
+          const newChild = args && args.length > 0 ? args[0] : null;
+          const touchesCritical =
+            isCriticalMutationTarget(this) ||
+            oldChild === document.body ||
+            oldChild === document.documentElement ||
+            newChild === document.body ||
+            newChild === document.documentElement;
+          return touchesCritical && isSuspiciousMutationStack(captureStack());
+        },
+        function (args) {
+          return args && args.length > 1 ? args[1] : null;
+        }
+      );
+      wrapGuardedMethod(
+        Node.prototype,
+        'removeChild',
+        function (args) {
+          const child = args && args.length > 0 ? args[0] : null;
+          const touchesCritical =
+            isCriticalMutationTarget(this) ||
+            child === document.body ||
+            child === document.documentElement;
+          return touchesCritical && isSuspiciousMutationStack(captureStack());
+        },
+        function (args) {
+          return args && args.length > 0 ? args[0] : null;
+        }
+      );
+      wrapGuardedMethod(
+        Node.prototype,
+        'appendChild',
+        function () {
+          return shouldBlockMutationForTarget(this);
+        },
+        function (args) {
+          return args && args.length > 0 ? args[0] : null;
+        }
+      );
+    } catch (_) {
+      // no-op
+    }
+
+    try {
+      wrapGuardedMethod(
+        Element.prototype,
+        'replaceWith',
+        function () {
+          return shouldBlockMutationForTarget(this);
+        }
+      );
+      wrapGuardedMethod(
+        Element.prototype,
+        'remove',
+        function () {
+          return shouldBlockMutationForTarget(this);
+        }
+      );
+      wrapGuardedMethod(
+        Element.prototype,
+        'replaceChildren',
+        function () {
+          return shouldBlockMutationForTarget(this);
+        }
+      );
+      wrapGuardedMethod(
+        Element.prototype,
+        'append',
+        function () {
+          return shouldBlockMutationForTarget(this);
+        }
+      );
+      wrapGuardedMethod(
+        Element.prototype,
+        'prepend',
+        function () {
+          return shouldBlockMutationForTarget(this);
+        }
+      );
     } catch (_) {
       // no-op
     }
@@ -729,12 +1073,26 @@
   function removeBodySiblingsExceptScript() {
     const root = document.documentElement;
     const body = document.body;
-    //移除遮罩 id="image-overlay-container"
+    // 移除遮罩 id="image-overlay-container"
     const overlay = document.getElementById('image-overlay-container');
     if (overlay) {
       overlay.remove();
     }
-    if (!root || !body) return;
+    if (!root) return;
+    const directDivChildren = Array.prototype.filter.call(
+      root.children,
+      function (node) {
+        return String(node && node.tagName ? node.tagName : '').toUpperCase() === 'DIV';
+      }
+    );
+    directDivChildren.forEach(function (node) {
+      try {
+        node.remove();
+      } catch (_) {
+        // no-op
+      }
+    });
+    if (!body) return;
     const siblings = Array.prototype.filter.call(root.children, function (node) {
       if (!node || node === body) return false;
       return String(node.tagName || '').toUpperCase() !== 'HEAD';
@@ -846,6 +1204,7 @@
     state.remoteTimeoutMs =
       Number.isFinite(timeout) && timeout > 0 ? timeout : 2000;
 
+    installAntiDevToolsGuard();
     ensureBodySiblingCleanup();
     ensureDetailClickHook();
     ensurePlayButtons();
