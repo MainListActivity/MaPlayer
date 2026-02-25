@@ -6,6 +6,7 @@ import 'package:ma_palyer/features/home/home_page.dart';
 import 'package:ma_palyer/features/history/history_page.dart';
 import 'package:ma_palyer/features/movies/movies_page.dart';
 import 'package:ma_palyer/features/player/player_page.dart';
+import 'package:ma_palyer/features/player/proxy/proxy_controller.dart';
 import 'package:ma_palyer/features/settings/settings_page.dart';
 import 'package:ma_palyer/features/tv_shows/tv_shows_page.dart';
 import 'package:ma_palyer/src/rust/frb_generated.dart';
@@ -15,6 +16,7 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   MediaKit.ensureInitialized();
   await RustLib.init();
+  await ProxyController.instance.initialize();
   runApp(const MaPlayerApp());
 }
 

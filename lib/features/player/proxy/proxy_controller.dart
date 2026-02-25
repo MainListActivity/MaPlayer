@@ -24,6 +24,11 @@ class ProxyController {
 
   void _log(String message) => debugPrint('[ProxyController] $message');
 
+  /// Initialize Rust proxy engine as early as possible (app startup).
+  Future<void> initialize() async {
+    await _ensureEngine();
+  }
+
   Future<void> _ensureEngine() async {
     if (_engineReady) return;
     final cacheDir = await getTemporaryDirectory();
@@ -49,7 +54,10 @@ class ProxyController {
     String? fileKey,
     Future<Map<String, String>?> Function()? onSourceAuthRejected,
   }) async {
-    await _ensureEngine();
+    if (!_engineReady) {
+      _log('engine not ready when creating session, initializing now');
+      await _ensureEngine();
+    }
     _ensureAggregateTicker();
 
     if (_isM3u8Like(media.url)) {
