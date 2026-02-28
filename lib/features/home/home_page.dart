@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:flutter/services.dart';
 import 'package:ma_palyer/app/app_route.dart';
+import 'package:ma_palyer/features/home/home_page_cache.dart';
 import 'package:ma_palyer/features/home/home_webview_bridge_contract.dart';
 
 import 'package:ma_palyer/features/playback/play_detail_payload_parser.dart';
@@ -30,6 +31,8 @@ class _HomePageState extends State<HomePage> {
   DateTime? _lastBridgeErrorAt;
   String? _lastBridgeErrorMessage;
   final bool _isBusy = false;
+  String? _cachedHtml;
+  bool _loadedFromCache = false;
 
   void _logWebView(String message) {
     debugPrint('[HomeWebView] $message');
@@ -88,6 +91,16 @@ class _HomePageState extends State<HomePage> {
     final homeUa = data[2] as String?;
     final previousUrl = _currentUrl;
     if (!mounted) return;
+
+    // Try loading cached HTML before building the WebView
+    if (_cachedHtml == null && !forceReload) {
+      final cached = await HomePageCache.instance.get(url);
+      if (cached != null && mounted) {
+        _cachedHtml = cached;
+        _logWebView('cache hit for $url (${cached.length} chars)');
+      }
+    }
+
     setState(() {
       _currentUrl = url;
       _remoteBridgeJsUrl = remoteJsUrl;
@@ -261,7 +274,15 @@ class _HomePageState extends State<HomePage> {
                 : ClipRRect(
                     borderRadius: BorderRadius.circular(12),
                     child: InAppWebView(
-                      initialUrlRequest: URLRequest(url: WebUri(_currentUrl)),
+                      initialUrlRequest: _cachedHtml == null
+                          ? URLRequest(url: WebUri(_currentUrl))
+                          : null,
+                      initialData: _cachedHtml != null
+                          ? InAppWebViewInitialData(
+                              data: _cachedHtml!,
+                              baseUrl: WebUri(_currentUrl),
+                            )
+                          : null,
                       initialSettings: InAppWebViewSettings(
                         javaScriptEnabled: true,
                         javaScriptCanOpenWindowsAutomatically: true,
@@ -269,7 +290,10 @@ class _HomePageState extends State<HomePage> {
                       ),
                       onWebViewCreated: (controller) {
                         _webController = controller;
-                        _logWebView('created, configured=$_currentUrl');
+                        if (_cachedHtml != null) {
+                          _loadedFromCache = true;
+                        }
+                        _logWebView('created, configured=$_currentUrl loadedFromCache=$_loadedFromCache');
                         _applyRuntimeWebViewSettings(controller);
                         controller.addJavaScriptHandler(
                           handlerName:
@@ -323,6 +347,29 @@ class _HomePageState extends State<HomePage> {
                           const Duration(milliseconds: 300),
                         );
                         await _injectPlayButtons();
+
+                        // If loaded from cache, reload the real URL in background
+                        if (_loadedFromCache) {
+                          _loadedFromCache = false;
+                          _logWebView('cache displayed, reloading real URL: $_currentUrl');
+                          controller.loadUrl(
+                            urlRequest: URLRequest(url: WebUri(_currentUrl)),
+                          );
+                          return;
+                        }
+
+                        // Capture current page HTML for cache
+                        try {
+                          final html = await controller.evaluateJavascript(
+                            source: 'document.documentElement.outerHTML',
+                          );
+                          if (html != null && html is String && html.isNotEmpty) {
+                            HomePageCache.instance.put(_currentUrl, html);
+                            _logWebView('cached HTML for $_currentUrl (${html.length} chars)');
+                          }
+                        } catch (e) {
+                          _logWebView('failed to capture HTML for cache: $e');
+                        }
                       },
                     ),
                   ),
