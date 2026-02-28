@@ -10,7 +10,7 @@ crate-type = ["cdylib", "staticlib", "lib"]
 flutter_rust_bridge = "=2.11.1"
 tokio = { version = "1", features = ["full"] }
 axum = "0.8"
-reqwest = { version = "0.12", features = ["stream"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
 memmap2 = "0.9"
 bitvec = "1"
 bytes = "1"
@@ -27,5 +27,5 @@ anyhow = "1"
 [dev-dependencies]
 tempfile = "3"
 tokio = { version = "1", features = ["full", "test-util"] }
-reqwest = { version = "0.12", features = ["stream"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
 axum = "0.8"
