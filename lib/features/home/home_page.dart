@@ -348,13 +348,10 @@ class _HomePageState extends State<HomePage> {
                         );
                         await _injectPlayButtons();
 
-                        // If loaded from cache, reload the real URL in background
+                        // Skip caching when loaded from cache snapshot
                         if (_loadedFromCache) {
                           _loadedFromCache = false;
-                          _logWebView('cache displayed, reloading real URL: $_currentUrl');
-                          controller.loadUrl(
-                            urlRequest: URLRequest(url: WebUri(_currentUrl)),
-                          );
+                          _logWebView('cache snapshot displayed for $_currentUrl');
                           return;
                         }
 
