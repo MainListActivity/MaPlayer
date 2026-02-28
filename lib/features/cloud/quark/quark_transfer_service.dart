@@ -452,7 +452,7 @@ class QuarkTransferService {
         auth: auth,
         data: data,
         latestVideoAuth: latestVideoAuth,
-      );
+      ).toList();
       final rawVariant = await _resolveRawVariant(
         auth: auth,
         savedFileId: savedFileId,
@@ -480,7 +480,9 @@ class QuarkTransferService {
       savedFileId: savedFileId,
     );
     if (rawFallback != null) {
-      _logTransfer('resolve playable: cloud play failed, falling back to raw variant');
+      _logTransfer(
+        'resolve playable: cloud play failed, falling back to raw variant',
+      );
       return QuarkPlayableFile(
         url: rawFallback.url,
         headers: rawFallback.headers,
@@ -1032,6 +1034,19 @@ class QuarkTransferService {
         .replace(queryParameters: <String, String>{'pr': 'ucpro', 'fr': 'pc'});
   }
 
+  Uri _buildEverLoginUri(Uri base) {
+    return base
+        .resolve('devices/ever_login')
+        .replace(
+          queryParameters: <String, String>{
+            'pr': 'ucpro',
+            'fr': 'pc',
+            'uc_param_str': '',
+            'device_platform': 'PC_APP',
+          },
+        );
+  }
+
   Uri _buildTaskUri(
     Uri base, {
     required String taskId,
@@ -1167,10 +1182,11 @@ class QuarkTransferService {
     required QuarkAuthState auth,
     required String savedFileId,
   }) async {
+    final effectiveAuth = await _refreshPuusBeforeDownload(auth);
     final uri = _buildDownloadUri(_baseUri);
     final response = await _http.post(
       uri,
-      headers: _downloadHeaders(auth),
+      headers: _downloadHeaders(effectiveAuth),
       body: jsonEncode(<String, dynamic>{
         'fids': <String>[savedFileId],
       }),
@@ -1193,7 +1209,7 @@ class QuarkTransferService {
     }
 
     final headers = _mergePlayableHeaders(
-      auth: auth,
+      auth: effectiveAuth,
       resolved: <String, String>{
         'Referer': 'https://pan.quark.cn/',
         'User-Agent': _quarkDesktopAppUa,
@@ -1206,6 +1222,30 @@ class QuarkTransferService {
       headers: headers,
       sizeBytes: downloadInfo.sizeBytes,
     );
+  }
+
+  Future<QuarkAuthState> _refreshPuusBeforeDownload(QuarkAuthState auth) async {
+    final uri = _buildEverLoginUri(_baseUri);
+    final headers = _downloadHeaders(auth);
+    try {
+      final response = await _http.get(uri, headers: headers);
+      final nextPuus = _extractCookieFromSetCookie(response.headers, '__puus');
+      _logTransfer(
+        'ever_login: uri=$uri status=${response.statusCode} puus=${nextPuus == null || nextPuus.isEmpty ? "unchanged" : "updated"}',
+      );
+      if (nextPuus == null || nextPuus.isEmpty) {
+        return auth;
+      }
+      final authCookie = auth.cookie?.trim() ?? '';
+      final currentCookie = authCookie.isNotEmpty
+          ? authCookie
+          : (_getHeaderCaseInsensitive(headers, 'Cookie')?.trim() ?? '');
+      final nextCookie = _upsertCookie(currentCookie, '__puus', nextPuus);
+      return _authService.updateCookie(auth, nextCookie);
+    } catch (e) {
+      _logTransfer('ever_login failed: $e');
+      return auth;
+    }
   }
 
   _QuarkDownloadInfo _extractDownloadInfo(Object? raw) {
@@ -1292,12 +1332,19 @@ class QuarkTransferService {
   }
 
   String? _extractVideoAuthFromSetCookie(Map<String, String> headers) {
+    return _extractCookieFromSetCookie(headers, 'Video-Auth');
+  }
+
+  String? _extractCookieFromSetCookie(
+    Map<String, String> headers,
+    String name,
+  ) {
     final setCookie = _getHeaderCaseInsensitive(headers, 'set-cookie');
     if (setCookie == null || setCookie.isEmpty) {
       return null;
     }
     final match = RegExp(
-      r'(^|[,\s])Video-Auth=([^;,\s]+)',
+      '(^|,)\\s*${RegExp.escape(name)}=([^;,\\s]+)',
       caseSensitive: false,
     ).firstMatch(setCookie);
     return match?.group(2);

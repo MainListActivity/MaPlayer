@@ -82,4 +82,26 @@ void main() {
       ),
     );
   });
+
+  test('updateCookie persists latest cookie', () async {
+    final store = _MemoryCredentialStore();
+    final service = QuarkAuthService(
+      credentialStore: store,
+      httpClient: MockClient((_) async => http.Response('{}', 500)),
+    );
+    final current = QuarkAuthState(
+      accessToken: 'a',
+      refreshToken: 'r',
+      expiresAtEpochMs: DateTime.now()
+          .add(const Duration(hours: 1))
+          .millisecondsSinceEpoch,
+      cookie: 'sid=abc; __puus=old',
+    );
+
+    final next = await service.updateCookie(current, 'sid=abc; __puus=new');
+
+    expect(next.cookie, 'sid=abc; __puus=new');
+    final saved = await store.readJson(CredentialStore.quarkAuthKey);
+    expect(saved?['cookie'], 'sid=abc; __puus=new');
+  });
 }

@@ -10,10 +10,24 @@ import 'package:ma_palyer/features/cloud/quark/quark_transfer_service.dart';
 class _FakeAuthService extends QuarkAuthService {
   _FakeAuthService(this.state);
 
-  final QuarkAuthState state;
+  QuarkAuthState state;
 
   @override
   Future<QuarkAuthState> ensureValidToken() async => state;
+
+  @override
+  Future<QuarkAuthState> updateCookie(
+    QuarkAuthState current,
+    String cookieHeader,
+  ) async {
+    state = QuarkAuthState(
+      accessToken: current.accessToken,
+      refreshToken: current.refreshToken,
+      expiresAtEpochMs: current.expiresAtEpochMs,
+      cookie: cookieHeader,
+    );
+    return state;
+  }
 }
 
 String? _headerValue(Map<String, String> headers, String name) {
@@ -152,6 +166,73 @@ void main() {
     expect(_cookieValue(playbackCookie, 'sid'), 'abc');
     expect(_cookieValue(playbackCookie, 'Video-Auth'), 'new-auth');
     expect(playbackCookie, isNot(contains('old-auth')));
+  });
+
+  test('resolvePlayableFile refreshes __puus before raw download', () async {
+    const cookie = 'sid=abc; __puus=old-puus';
+    final authService = _FakeAuthService(
+      QuarkAuthState(
+        accessToken: 'token',
+        refreshToken: 'refresh',
+        expiresAtEpochMs: DateTime.now()
+            .add(const Duration(hours: 1))
+            .millisecondsSinceEpoch,
+        cookie: cookie,
+      ),
+    );
+
+    final client = MockClient((http.Request request) async {
+      if (request.url.path == '/1/clouddrive/file/v2/play') {
+        return http.Response(
+          jsonEncode(<String, dynamic>{'code': 0, 'data': <String, dynamic>{}}),
+          200,
+        );
+      }
+      if (request.url.path == '/1/clouddrive/devices/ever_login') {
+        expect(_headerValue(request.headers, 'Cookie'), cookie);
+        expect(
+          _headerValue(request.headers, 'User-Agent'),
+          contains('quark-cloud-drive'),
+        );
+        return http.Response(
+          'ok',
+          200,
+          headers: <String, String>{
+            'set-cookie': '__puus=new-puus; Path=/; Domain=quark.cn',
+          },
+        );
+      }
+      if (request.url.path == '/1/clouddrive/file/download') {
+        final requestCookie = _headerValue(request.headers, 'Cookie');
+        expect(_cookieValue(requestCookie, 'sid'), 'abc');
+        expect(_cookieValue(requestCookie, '__puus'), 'new-puus');
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'code': 0,
+            'data': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'download_url': 'https://download.example.com/file.mp4',
+              },
+            ],
+          }),
+          200,
+        );
+      }
+      return http.Response('not found', 404);
+    });
+
+    final service = QuarkTransferService(
+      authService: authService,
+      httpClient: client,
+      baseUri: Uri.parse('https://drive-pc.quark.cn/1/clouddrive/'),
+    );
+
+    final playable = await service.resolvePlayableFile('file-1');
+    final playbackCookie = playable.headers['Cookie'];
+    expect(playable.url, 'https://download.example.com/file.mp4');
+    expect(_cookieValue(playbackCookie, 'sid'), 'abc');
+    expect(_cookieValue(playbackCookie, '__puus'), 'new-puus');
+    expect(authService.state.cookie, contains('__puus=new-puus'));
   });
 
   test(

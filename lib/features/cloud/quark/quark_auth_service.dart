@@ -221,4 +221,25 @@ class QuarkAuthService {
     );
     return next;
   }
+
+  Future<QuarkAuthState> updateCookie(
+    QuarkAuthState current,
+    String cookieHeader,
+  ) async {
+    final normalized = cookieHeader.trim();
+    if (normalized.isEmpty || normalized == (current.cookie ?? '').trim()) {
+      return current;
+    }
+    final next = QuarkAuthState(
+      accessToken: current.accessToken,
+      refreshToken: current.refreshToken,
+      expiresAtEpochMs: current.expiresAtEpochMs,
+      cookie: normalized,
+    );
+    await _credentialStore.writeJson(
+      CredentialStore.quarkAuthKey,
+      next.toJson(),
+    );
+    return next;
+  }
 }
