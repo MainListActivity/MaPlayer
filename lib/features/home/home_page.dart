@@ -4,6 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:flutter/services.dart';
 import 'package:ma_palyer/app/app_route.dart';
+import 'package:ma_palyer/features/home/bookmark_item.dart';
+import 'package:ma_palyer/features/home/bookmark_repository.dart';
+import 'package:ma_palyer/features/home/home_header_bar.dart';
 import 'package:ma_palyer/features/home/home_page_cache.dart';
 import 'package:ma_palyer/features/home/home_webview_bridge_contract.dart';
 
@@ -21,6 +24,7 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   final _configRepository = TvBoxConfigRepository();
+  final _bookmarkRepository = BookmarkRepository();
 
   InAppWebViewController? _webController;
   String _currentUrl = 'https://www.wogg.net/';
@@ -33,6 +37,9 @@ class _HomePageState extends State<HomePage> {
   final bool _isBusy = false;
   String? _cachedHtml;
   bool _loadedFromCache = false;
+  List<BookmarkItem> _bookmarks = [];
+  bool _isCurrentBookmarked = false;
+  String _currentTitle = '';
 
   void _logWebView(String message) {
     debugPrint('[HomeWebView] $message');
@@ -66,6 +73,7 @@ class _HomePageState extends State<HomePage> {
     super.initState();
     TvBoxConfigRepository.configRevision.addListener(_onConfigRevisionChanged);
     _loadHomeUrl();
+    _refreshBookmarks();
   }
 
   @override
@@ -216,6 +224,55 @@ class _HomePageState extends State<HomePage> {
     _showSnack('远程脚本已回退本地解析: $message');
   }
 
+  Future<void> _refreshBookmarks() async {
+    final bookmarks = await _bookmarkRepository.listAll();
+    final isBookmarked = await _bookmarkRepository.contains(_currentUrl);
+    if (!mounted) return;
+    setState(() {
+      _bookmarks = bookmarks;
+      _isCurrentBookmarked = isBookmarked;
+    });
+  }
+
+  Future<void> _toggleBookmark() async {
+    if (_isCurrentBookmarked) {
+      await _bookmarkRepository.remove(_currentUrl);
+    } else {
+      String title = _currentTitle;
+      String? html;
+      final controller = _webController;
+      if (controller != null) {
+        try {
+          final t = await controller.evaluateJavascript(source: 'document.title');
+          if (t is String && t.isNotEmpty) title = t;
+          final h = await controller.evaluateJavascript(
+            source: 'document.documentElement.outerHTML',
+          );
+          if (h is String && h.isNotEmpty) html = h;
+        } catch (_) {}
+      }
+      await _bookmarkRepository.add(_currentUrl, title, html: html);
+    }
+    await _refreshBookmarks();
+  }
+
+  Future<void> _onSelectBookmark(BookmarkItem item) async {
+    final controller = _webController;
+    if (controller == null) return;
+    final cached = await HomePageCache.instance.get(item.url);
+    setState(() {
+      _currentUrl = item.url;
+      _currentTitle = item.title;
+    });
+    if (cached != null) {
+      _loadedFromCache = true;
+      await controller.loadData(data: cached, baseUrl: WebUri(item.url));
+    } else {
+      await controller.loadUrl(urlRequest: URLRequest(url: WebUri(item.url)));
+    }
+    await _refreshBookmarks();
+  }
+
   void _showSnack(String text) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -250,6 +307,14 @@ class _HomePageState extends State<HomePage> {
       padding: const EdgeInsets.all(12),
       child: Column(
         children: [
+          HomeHeaderBar(
+            currentTitle: _currentTitle,
+            isBookmarked: _isCurrentBookmarked,
+            bookmarks: _bookmarks,
+            onToggleBookmark: _toggleBookmark,
+            onSelectBookmark: _onSelectBookmark,
+          ),
+          const SizedBox(height: 8),
           Expanded(
             child: InAppWebViewPlatform.instance == null
                 ? Container(
@@ -347,6 +412,21 @@ class _HomePageState extends State<HomePage> {
                           const Duration(milliseconds: 300),
                         );
                         await _injectPlayButtons();
+
+                        // Update page title and bookmark state
+                        try {
+                          final title = await controller.evaluateJavascript(
+                            source: 'document.title',
+                          );
+                          if (title is String && title.isNotEmpty && mounted) {
+                            setState(() => _currentTitle = title);
+                          }
+                        } catch (_) {}
+                        final loadedUrl = (await controller.getUrl())?.toString();
+                        if (loadedUrl != null && loadedUrl.isNotEmpty) {
+                          _currentUrl = loadedUrl;
+                        }
+                        await _refreshBookmarks();
 
                         // Skip caching when loaded from cache snapshot
                         if (_loadedFromCache) {
